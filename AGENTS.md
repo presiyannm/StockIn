@@ -106,11 +106,11 @@ Remote: `https://github.com/presiyannm/StockIn.git`.
 | Branch | Purpose | Who changes it |
 |---|---|---|
 | `dev` | Integration branch. Every finished feature lands here first. | Pull requests from feature branches |
-| `main` | Stable, tested code. | Pull requests from `dev` |
-| `prod` | What is released/deployed. | Pull requests from `main` |
+| `prod` | What is released/deployed. | Pull requests from `dev` |
 
-Code only moves forward: `feature branch -> dev -> main -> prod`. Never commit or push directly
-to `dev`, `main` or `prod`, and never force-push them.
+Code only moves forward: `feature branch -> dev -> prod`. Never commit or push directly to
+`dev` or `prod`, and never force-push them. A `main` branch still exists on the remote but is
+not part of the workflow: do not branch from it, target it, or merge into it.
 
 ### Working on a feature
 
@@ -128,8 +128,7 @@ to `dev`, `main` or `prod`, and never force-push them.
 
 ### Pull requests
 
-- Target `dev` (not `main`, not `prod`). Release PRs are the only exception: `dev -> main`, then
-  `main -> prod`.
+- Target `dev`. The only exception is a release PR, `dev -> prod`.
 - Title says what changed. The description says why, what you tested, and what a reviewer should
   look at. Link the issue or task if there is one.
 - Before opening: `npm run typecheck` and `npm test` pass, test data is cleaned up, no secrets in
@@ -142,11 +141,11 @@ to `dev`, `main` or `prod`, and never force-push them.
 ### Hotfixes
 
 For a production bug: branch `hotfix/<description>` from `prod`, open a PR into `prod`, then
-merge the same fix back into `main` and `dev` so they do not lose it.
+merge the same fix back into `dev` so it does not lose it.
 
 ### For AI agents
 
-- Before changing any file, check the current branch. If it is `dev`, `main` or `prod`, create a
+- Before changing any file, check the current branch. If it is `dev` or `prod`, create a
   feature branch first.
 - Commit as you go in small commits. Push the branch and open (or give the user the link to open)
   a PR into `dev`. Do not merge PRs yourself unless asked.
