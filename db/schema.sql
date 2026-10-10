@@ -97,11 +97,10 @@ CREATE TABLE stock_movements (
   delivery_id int NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
   product_id int NOT NULL REFERENCES products(id),
   qty numeric NOT NULL,
-  bucket text NOT NULL CHECK (bucket IN ('sellable', 'quarantine')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX ON invoice_lines (delivery_id);
 CREATE INDEX ON scans (delivery_id);
 CREATE INDEX ON issues (delivery_id);
-CREATE INDEX ON stock_movements (product_id, bucket);
+CREATE INDEX ON stock_movements (product_id);

@@ -17,7 +17,7 @@ and the only one the web app talks to. Project-wide rules are in the root `AGENT
 |---|---|
 | `index.ts` | Builds the Fastify app, registers CORS, multipart and routes |
 | `routes.ts` | Every HTTP route and the shared error handler |
-| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings) and `stockSplit` (sellable vs quarantine) |
+| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings) and `stockSplit` (sellable vs excluded) |
 | `reconcile.test.ts` | Unit tests for the two functions above |
 | `aiClient.ts` | The only code that calls `ai-service` (`extractInvoice`, `identifyProduct`, `draftSupplierMessage`, `aiAvailable`) |
 | `storage.ts` | R2 upload/download/presigned URLs, with a local `uploads/` fallback when `R2_*` is empty |
@@ -31,9 +31,9 @@ This package must never hold the Anthropic key.
 
 ## Rules
 
-- **Stock rules** (`stockSplit`): received goods are `sellable`, except quantity reported
-  `expired`, `damaged`, `wrong_item` or `other`, which goes to `quarantine` (capped at what was
-  received). A `short` report does not move stock. Changing these changes real inventory, so
+- **Stock rules** (`stockSplit`): received goods enter stock, except quantity reported
+  `expired`, `damaged` or `wrong_item`, which is left out of stock and kept only in the report
+  (capped at what was received). `short` and `other` reports do not move stock. Changing these changes real inventory, so
   update the tests and the README in the same change.
 - **Idempotency:** `reconcile` and `finish` must be safe to call twice. `finish` on a closed
   delivery returns the existing report and writes nothing.

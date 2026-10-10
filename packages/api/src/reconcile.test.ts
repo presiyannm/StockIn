@@ -62,7 +62,7 @@ test("duplicate invoice lines for one product are summed", () => {
   assert.deepEqual(f, []);
 });
 
-test("expired goods go to quarantine; short complaints do not move stock", () => {
+test("expired goods stay out of stock; short complaints do not move stock", () => {
   const split = stockSplit(
     [
       { product_id: 1, qty: 12 },
@@ -76,19 +76,27 @@ test("expired goods go to quarantine; short complaints do not move stock", () =>
   assert.deepEqual(split.find((s) => s.product_id === 1), {
     product_id: 1,
     sellable: 9,
-    quarantine: 3,
+    excluded: 3,
   });
   assert.deepEqual(split.find((s) => s.product_id === 2), {
     product_id: 2,
     sellable: 8,
-    quarantine: 0,
+    excluded: 0,
   });
 });
 
-test("quarantine cannot exceed what was received", () => {
+test("an other issue is informational and does not remove goods from stock", () => {
+  const split = stockSplit(
+    [{ product_id: 1, qty: 10 }],
+    [{ product_id: 1, type: "other", qty: 2 }],
+  );
+  assert.deepEqual(split[0], { product_id: 1, sellable: 10, excluded: 0 });
+});
+
+test("excluded cannot exceed what was received", () => {
   const split = stockSplit(
     [{ product_id: 1, qty: 2 }],
     [{ product_id: 1, type: "damaged", qty: 5 }],
   );
-  assert.deepEqual(split[0], { product_id: 1, sellable: 0, quarantine: 2 });
+  assert.deepEqual(split[0], { product_id: 1, sellable: 0, excluded: 2 });
 });
