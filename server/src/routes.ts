@@ -197,20 +197,27 @@ export async function registerRoutes(app: FastifyInstance) {
           ],
         );
       }
-      const [supplier] = invoice.supplier_name
-        ? (
+      let supplierId: number | null = null;
+      if (invoice.supplier_name) {
+        const found = await client.query(
+          "SELECT id FROM suppliers WHERE name ILIKE $1 LIMIT 1",
+          [`%${invoice.supplier_name}%`],
+        );
+        supplierId =
+          found.rows[0]?.id ??
+          (
             await client.query(
-              "SELECT id FROM suppliers WHERE name ILIKE $1 LIMIT 1",
-              [`%${invoice.supplier_name}%`],
+              "INSERT INTO suppliers (name) VALUES ($1) RETURNING id",
+              [invoice.supplier_name],
             )
-          ).rows
-        : [];
+          ).rows[0].id;
+      }
       await client.query(
         `UPDATE deliveries
             SET invoice_number = $2, invoice_date = $3,
                 supplier_id = COALESCE($4, supplier_id), status = 'scanning'
           WHERE id = $1`,
-        [id, invoice.invoice_number, invoice.invoice_date, supplier?.id ?? null],
+        [id, invoice.invoice_number, invoice.invoice_date, supplierId],
       );
       await client.query("COMMIT");
     } catch (e) {
@@ -401,13 +408,20 @@ export async function registerRoutes(app: FastifyInstance) {
       }),
     ];
 
+    // Write to the supplier in the invoice language (Cyrillic invoice -> Bulgarian).
+    const [{ raw }] = await query<{ raw: string }>(
+      "SELECT COALESCE(string_agg(raw_text, ' '), '') AS raw FROM invoice_lines WHERE delivery_id = $1",
+      [id],
+    );
+    const language = /[Ѐ-ӿ]/.test(raw) ? "bg" : "en";
+
     let message = "";
     let resolution = "Please issue a credit note or send a replacement for the items above.";
     if (items.length) {
       if (aiEnabled) {
         try {
           const draft = await draftSupplierMessage({
-            language: "en",
+            language,
             supplier: delivery.supplier_name ?? "Supplier",
             invoiceNumber: delivery.invoice_number,
             items,

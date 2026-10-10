@@ -21,7 +21,12 @@ export type ExtractedInvoice = {
 
 export const aiEnabled = Boolean(config.anthropicKey);
 
-const client = aiEnabled ? new Anthropic({ apiKey: config.anthropicKey }) : null;
+const client = aiEnabled ? new Anthropic({
+      apiKey: config.anthropicKey,
+      defaultHeaders: config.anthropicWorkspaceId
+        ? { "anthropic-workspace-id": config.anthropicWorkspaceId }
+        : undefined,
+    }) : null;
 
 function requireClient(): Anthropic {
   if (!client) throw new Error("ANTHROPIC_API_KEY is not set in .env");
@@ -52,40 +57,56 @@ function catalogueText(products: Product[]): string {
     .join("\n");
 }
 
-/** Forces a single tool call so the model returns schema-shaped JSON. */
-async function callTool<T>(opts: {
+type Schema = Record<string, any>;
+
+/** Structured outputs want closed objects and anyOf instead of ["x","null"]. */
+function strictSchema(node: Schema): Schema {
+  if (Array.isArray(node)) return node.map(strictSchema) as unknown as Schema;
+  if (node === null || typeof node !== "object") return node;
+  const out: Schema = {};
+  for (const [k, v] of Object.entries(node)) {
+    out[k] = k === "properties"
+      ? Object.fromEntries(Object.entries(v as Schema).map(([n, p]) => [n, strictSchema(p)]))
+      : strictSchema(v);
+  }
+  if (Array.isArray(out.type) && out.type.includes("null")) {
+    const { type, ...rest } = out;
+    const base = type.filter((t: string) => t !== "null");
+    return { ...rest, anyOf: [{ type: base.length === 1 ? base[0] : base }, { type: "null" }] };
+  }
+  if (out.type === "object") out.additionalProperties = false;
+  return out;
+}
+
+/** Asks for JSON matching the schema (structured outputs, no forced tool call). */
+async function callJson<T>(opts: {
   system: string;
   content: Anthropic.ContentBlockParam[];
-  toolName: string;
-  schema: Anthropic.Tool["input_schema"];
+  schema: Schema;
   maxTokens?: number;
 }): Promise<T> {
   const res = await requireClient().messages.create({
     model: config.claudeModel,
     max_tokens: opts.maxTokens ?? 4096,
     system: opts.system,
-    tools: [
-      {
-        name: opts.toolName,
-        description: "Return the structured result.",
-        input_schema: opts.schema,
-      },
-    ],
-    tool_choice: { type: "tool", name: opts.toolName },
+    output_config: {
+      effort: "medium",
+      format: { type: "json_schema", schema: strictSchema(opts.schema) },
+    },
     messages: [{ role: "user", content: opts.content }],
   });
-  const block = res.content.find((b) => b.type === "tool_use");
-  if (!block || block.type !== "tool_use") {
-    throw new Error("Model returned no structured result");
-  }
-  return block.input as T;
+  if (res.stop_reason === "refusal") throw new Error("The model declined this request");
+  if (res.stop_reason === "max_tokens") throw new Error("The model response was cut off");
+  const block = res.content.find((b) => b.type === "text");
+  if (!block || block.type !== "text") throw new Error("Model returned no structured result");
+  return JSON.parse(block.text) as T;
 }
 
 export function extractInvoice(
   images: ImageInput[],
   products: Product[],
 ): Promise<ExtractedInvoice> {
-  return callTool<ExtractedInvoice>({
+  return callJson<ExtractedInvoice>({
     system:
       "You read delivery invoices and delivery notes (Bulgarian or English, possibly photographed at an angle) for a small shop. " +
       "Extract every product line exactly as printed. Never invent lines. If a number is unreadable, lower the confidence instead of guessing. " +
@@ -97,7 +118,6 @@ export function extractInvoice(
         text: `Shop catalogue (id: name):\n${catalogueText(products)}\n\nExtract the invoice.`,
       },
     ],
-    toolName: "record_invoice",
     schema: {
       type: "object",
       properties: {
@@ -132,7 +152,7 @@ export async function identifyProduct(
   image: ImageInput,
   products: Product[],
 ): Promise<{ product_id: number | null; confidence: number; reason: string }> {
-  return callTool({
+  return callJson({
     system:
       "You identify a grocery product from a photo by matching it to the shop catalogue. " +
       "If it is not clearly one catalogue product, return null. Never guess.",
@@ -140,7 +160,6 @@ export async function identifyProduct(
       imageBlock(image),
       { type: "text", text: `Catalogue (id: name):\n${catalogueText(products)}\n\nWhich product is in the photo?` },
     ],
-    toolName: "identify_product",
     schema: {
       type: "object",
       properties: {
@@ -160,7 +179,7 @@ export async function draftSupplierMessage(input: {
   invoiceNumber: string | null;
   items: string[];
 }): Promise<{ message: string; requested_resolution: string }> {
-  return callTool({
+  return callJson({
     system:
       "You write short, polite, factual messages from a small shop to a supplier about problems with a delivery. " +
       "Do not invent facts or quantities; use only the items given. No threats.",
@@ -174,7 +193,6 @@ export async function draftSupplierMessage(input: {
           `\n\nAlso state in one short sentence the requested resolution (credit note or replacement).`,
       },
     ],
-    toolName: "write_message",
     schema: {
       type: "object",
       properties: {
