@@ -20,6 +20,8 @@ CREATE TABLE deliveries (
   invoice_date date,
   status text NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft', 'scanning', 'reconciled', 'closed')),
+  requested_resolution text CHECK (requested_resolution IN ('credit', 'replacement')),
+  resolution_note text,
   created_at timestamptz NOT NULL DEFAULT now(),
   closed_at timestamptz
 );
@@ -90,6 +92,12 @@ CREATE TABLE reports (
   pdf_r2_key text,
   sent_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE excess_acceptances (
+  delivery_id int NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+  product_id int NOT NULL REFERENCES products(id),
+  PRIMARY KEY (delivery_id, product_id)
 );
 
 CREATE TABLE stock_movements (

@@ -48,7 +48,9 @@ npm run dev                                     # api on :3001, ai-service on :3
 | GET | `/api/health` | DB and ai-service status |
 | GET | `/api/products`, `/api/suppliers` | Catalogue |
 | GET/POST | `/api/deliveries` | List / start a delivery |
-| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), report |
+| PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery: `{requested_resolution: "credit" \| "replacement" \| null, resolution_note}` (409 once closed) |
+| PUT | `/api/deliveries/:id/excess/:productId` | `{accept: boolean}`: confirm that units above the invoice may enter stock (409 once closed) |
+| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, report |
 | POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines |
 | PATCH | `/api/invoice-lines/:id` | Fix a line (`qty`, `product_id`) |
 | POST | `/api/deliveries/:id/scans` | `{barcode}` or `{product_id, qty, method}` |
@@ -57,7 +59,7 @@ npm run dev                                     # api on :3001, ai-service on :3
 | POST | `/api/deliveries/:id/reconcile` | Compare invoice vs scans into findings (idempotent) |
 | POST | `/api/deliveries/:id/issues` | Report on any product (multipart: `product_id`, `type`, `qty`, `expiry_date`, `note`, `photo`) |
 | DELETE | `/api/issues/:id` | Remove a report |
-| POST | `/api/deliveries/:id/finish` | Write stock, draft the supplier report, close (idempotent) |
+| POST | `/api/deliveries/:id/finish` | (409 with `products` when expired/damaged/wrong-item quantities exceed what was received) Write stock, draft the supplier report (lists every delivery item plus problems), close (idempotent) |
 | GET | `/api/deliveries/:id/report.html` | Printable report for the supplier |
 | GET | `/api/files/*` | Serves stored photos when R2 is not configured |
 
@@ -72,8 +74,8 @@ report. Stock follows what was scanned: a shortage is already reflected because 
 were never scanned. A `short` or `other` report does not change stock; it is a note for the report. There is no quarantine bucket:
 goods are either sellable or left out of inventory.
 
-Agreed target (see BUSINESS_REQUIREMENTS.md), not built yet: excess goods enter stock only
-once the user confirms them.
+Units above the invoiced quantity (including products not on the invoice) are not added to stock
+until the user confirms them with the excess route; the report lists them as not yet confirmed.
 
 ## ai-service (port 3002)
 

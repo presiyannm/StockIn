@@ -17,8 +17,8 @@ and the only one the web app talks to. Project-wide rules are in the root `AGENT
 |---|---|
 | `index.ts` | Builds the Fastify app, registers CORS, multipart and routes |
 | `routes.ts` | Every HTTP route and the shared error handler |
-| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings) and `stockSplit` (sellable vs excluded) |
-| `reconcile.test.ts` | Unit tests for the two functions above |
+| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings), `stockSplit` (sellable vs excluded) and `buildItemRows` (every delivery item for the report) |
+| `reconcile.test.ts` | Unit tests for the functions above |
 | `aiClient.ts` | The only code that calls `ai-service` (`extractInvoice`, `identifyProduct`, `draftSupplierMessage`, `aiAvailable`) |
 | `storage.ts` | R2 upload/download/presigned URLs, with a local `uploads/` fallback when `R2_*` is empty |
 | `db.ts` | `pg` pool, `query` helper, DATE type parser |
@@ -33,7 +33,8 @@ This package must never hold the Anthropic key.
 
 - **Stock rules** (`stockSplit`): received goods enter stock, except quantity reported
   `expired`, `damaged` or `wrong_item`, which is left out of stock and kept only in the report
-  (capped at what was received). `short` and `other` reports do not move stock. Changing these changes real inventory, so
+  (capped at what was received). `short` and `other` reports do not move stock. Units above the invoiced quantity stay out of
+  stock until confirmed per product (`excess_acceptances`, `PUT /api/deliveries/:id/excess/:productId`). Changing these changes real inventory, so
   update the tests and the README in the same change.
 - **Idempotency:** `reconcile` and `finish` must be safe to call twice. `finish` on a closed
   delivery returns the existing report and writes nothing.
@@ -46,6 +47,10 @@ This package must never hold the Anthropic key.
   AI call fails. `AiServiceError` becomes a 503 through the error handler.
 - **Report language:** the supplier report is always English, even for a Bulgarian invoice.
   The interface is English too. Invoice `language` is still extracted but does not affect the report.
+- **No double counting:** issues have no per-unit identity, so `finish` returns 409 (`overReportedProducts`)
+  when expired/damaged/wrong-item quantities for a product exceed what was received. Do not clamp silently.
+- **Requested resolution** is set by the user once per delivery (`PATCH /api/deliveries/:id`) and
+  copied to the report by `finish`. The AI never writes or suggests one.
 - **Findings come only from `reconcile`.** Invoice lines the AI could not match to a product
   become `mismatch` findings for a human; never guess a match here.
 - **Issues:** any product can be reported, including ones that matched perfectly. Types:

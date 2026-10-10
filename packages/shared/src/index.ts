@@ -47,7 +47,6 @@ export type DraftMessageRequest = {
 /** POST /draft-message response */
 export type DraftMessageResponse = {
   message: string;
-  requested_resolution: string;
 };
 
 /** Header both services use to authenticate each other. */

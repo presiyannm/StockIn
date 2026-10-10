@@ -9,7 +9,7 @@ import {
   identifyProduct,
   type ImageInput,
 } from "./aiClient.js";
-import { reconcile, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, overReportedProducts, reconcile, resolutionText, stockSplit } from "./reconcile.js";
 import { downloadPhoto, photoUrl, uploadPhoto } from "./storage.js";
 import { renderReportHtml } from "./reportHtml.js";
 
@@ -87,6 +87,49 @@ export async function registerRoutes(app: FastifyInstance) {
     return row;
   });
 
+  // The user's requested resolution for the whole delivery (credit or replacement).
+  app.patch("/api/deliveries/:id", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const b = (req.body ?? {}) as { requested_resolution?: string | null; resolution_note?: string | null };
+    if (b.requested_resolution != null && !["credit", "replacement"].includes(b.requested_resolution)) {
+      return reply.code(400).send({ error: "requested_resolution must be credit, replacement or null" });
+    }
+    const delivery = await getDelivery(id);
+    if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
+    if (delivery.status === "closed") {
+      return reply.code(409).send({ error: "Delivery is already closed" });
+    }
+    const [row] = await query(
+      "UPDATE deliveries SET requested_resolution = $2, resolution_note = $3 WHERE id = $1 RETURNING *",
+      [id, b.requested_resolution ?? null, b.resolution_note || null],
+    );
+    return row;
+  });
+
+  // Confirm (or take back) that extra units of a product may enter stock.
+  app.put("/api/deliveries/:id/excess/:productId", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const productId = Number((req.params as any).productId);
+    const b = (req.body ?? {}) as { accept?: boolean };
+    if (!productId || typeof b.accept !== "boolean") {
+      return reply.code(400).send({ error: "accept (true/false) is required" });
+    }
+    const delivery = await getDelivery(id);
+    if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
+    if (delivery.status === "closed") {
+      return reply.code(409).send({ error: "Delivery is already closed" });
+    }
+    if (b.accept) {
+      await query(
+        "INSERT INTO excess_acceptances (delivery_id, product_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [id, productId],
+      );
+    } else {
+      await query("DELETE FROM excess_acceptances WHERE delivery_id = $1 AND product_id = $2", [id, productId]);
+    }
+    return { ok: true, accepted: b.accept };
+  });
+
   // Everything the screens need in one call.
   app.get("/api/deliveries/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
@@ -131,6 +174,12 @@ export async function registerRoutes(app: FastifyInstance) {
       "SELECT * FROM reports WHERE delivery_id = $1 ORDER BY id DESC LIMIT 1",
       [id],
     );
+    const excessAccepted = (
+      await query<{ product_id: number }>(
+        "SELECT product_id FROM excess_acceptances WHERE delivery_id = $1",
+        [id],
+      )
+    ).map((r) => r.product_id);
 
     const photoList = await Promise.all(
       photos.map(async (p) => ({ id: p.id, issue_id: p.issue_id, url: await photoUrl(p.r2_key) })),
@@ -148,6 +197,7 @@ export async function registerRoutes(app: FastifyInstance) {
         ...i,
         photos: photoList.filter((p) => p.issue_id === i.id),
       })),
+      excess_accepted: excessAccepted,
       report: report ?? null,
     };
   });
@@ -403,6 +453,17 @@ export async function registerRoutes(app: FastifyInstance) {
       [id],
     );
 
+    const over = overReportedProducts(scans as any, issues as any);
+    if (over.length) {
+      const names = new Map(issues.map((i) => [i.product_id, i.product_name]));
+      return reply.code(409).send({
+        error:
+          "Expired, damaged and wrong-item reports add up to more than was received. " +
+          "Count each physical unit under one issue type only, then finish again.",
+        products: over.map((o) => ({ ...o, name: names.get(o.product_id) })),
+      });
+    }
+
     // Findings not already covered by a human issue still go on the report.
     const coveredProducts = new Set(issues.map((i) => i.product_id));
     const items: string[] = [
@@ -418,7 +479,8 @@ export async function registerRoutes(app: FastifyInstance) {
     ];
 
     let message = "";
-    let resolution = "Please issue a credit note or send a replacement for the items above.";
+    // Only what the user chose; the AI never invents a requested resolution.
+    const resolution = resolutionText(delivery.requested_resolution, delivery.resolution_note);
     if (items.length) {
       try {
         const draft = await draftSupplierMessage({
@@ -427,7 +489,6 @@ export async function registerRoutes(app: FastifyInstance) {
           items,
         });
         message = draft.message;
-        resolution = draft.requested_resolution;
       } catch (e) {
         req.log.warn(e, "AI draft failed, using template");
       }
@@ -436,11 +497,38 @@ export async function registerRoutes(app: FastifyInstance) {
       }
     } else {
       message = "No problems found with this delivery.";
-      resolution = "";
     }
-    const body = [message, "", ...items.map((t, n) => `${n + 1}. ${t}`)].join("\n");
+    const lineRows = await query<{ id: number; product_id: number | null; raw_text: string; qty: number }>(
+      "SELECT id, product_id, raw_text, qty::float AS qty FROM invoice_lines WHERE delivery_id = $1 ORDER BY id",
+      [id],
+    );
+    const expected = new Map<number, number>();
+    for (const l of lineRows) {
+      if (l.product_id != null) expected.set(l.product_id, (expected.get(l.product_id) ?? 0) + l.qty);
+    }
+    const accepted = new Set(
+      (
+        await query<{ product_id: number }>(
+          "SELECT product_id FROM excess_acceptances WHERE delivery_id = $1",
+          [id],
+        )
+      ).map((r) => r.product_id),
+    );
+    const split = stockSplit(scans, issues, { expected, accepted });
+    const productInfo = new Map(
+      (await query<{ id: number; name: string; unit: string }>("SELECT id, name, unit FROM products")).map(
+        (p) => [p.id, { name: p.name, unit: p.unit }],
+      ),
+    );
+    const itemTable = formatItemRows(buildItemRows(lineRows, scans as any, split, productInfo));
+    const body = [
+      message,
+      "",
+      "Delivery items:",
+      itemTable,
+      ...(items.length ? ["", "Problems:", ...items.map((t, n) => `${n + 1}. ${t}`)] : []),
+    ].join("\n");
 
-    const split = stockSplit(scans, issues);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
