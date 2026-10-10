@@ -448,14 +448,8 @@ export async function registerRoutes(app: FastifyInstance) {
       for (const s of split) {
         if (s.sellable > 0) {
           await client.query(
-            "INSERT INTO stock_movements (delivery_id, product_id, qty, bucket) VALUES ($1, $2, $3, 'sellable')",
+            "INSERT INTO stock_movements (delivery_id, product_id, qty) VALUES ($1, $2, $3)",
             [id, s.product_id, s.sellable],
-          );
-        }
-        if (s.quarantine > 0) {
-          await client.query(
-            "INSERT INTO stock_movements (delivery_id, product_id, qty, bucket) VALUES ($1, $2, $3, 'quarantine')",
-            [id, s.product_id, s.quarantine],
           );
         }
       }

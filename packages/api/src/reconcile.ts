@@ -104,26 +104,28 @@ export function reconcile(
 
 export type IssueIn = { product_id: number; type: string; qty: number };
 
-/** Issue types that make physical goods unsellable. A "short" issue is a
- * missing-quantity complaint, so it does not move stock. */
-const QUARANTINE_TYPES = new Set(["expired", "damaged", "wrong_item", "other"]);
+/** Issue types whose goods are not counted into stock; they live only in the
+ * report. "short" is a missing-quantity complaint and "other" is informational,
+ * so neither removes goods that were received. */
+const EXCLUDED_TYPES = new Set(["expired", "damaged", "wrong_item"]);
 
-/** Splits received goods into sellable vs quarantine, per product. */
+/** Splits received goods into what enters stock (sellable) and what is left
+ * out of stock (excluded), per product. */
 export function stockSplit(
   scans: ScanIn[],
   issues: IssueIn[],
-): { product_id: number; sellable: number; quarantine: number }[] {
+): { product_id: number; sellable: number; excluded: number }[] {
   const received = new Map<number, number>();
   for (const s of scans) {
     received.set(s.product_id, (received.get(s.product_id) ?? 0) + s.qty);
   }
   const bad = new Map<number, number>();
   for (const i of issues) {
-    if (!QUARANTINE_TYPES.has(i.type)) continue;
+    if (!EXCLUDED_TYPES.has(i.type)) continue;
     bad.set(i.product_id, (bad.get(i.product_id) ?? 0) + i.qty);
   }
   return [...received].map(([product_id, got]) => {
-    const quarantine = Math.min(got, bad.get(product_id) ?? 0);
-    return { product_id, sellable: got - quarantine, quarantine };
+    const excluded = Math.min(got, bad.get(product_id) ?? 0);
+    return { product_id, sellable: got - excluded, excluded };
   });
 }

@@ -129,7 +129,7 @@ not part of the workflow: do not branch from it, target it, or merge into it.
    Prefixes: `feature/` new behaviour, `fix/` bug fixes, `docs/` documentation only,
    `chore/` tooling and housekeeping. Use lowercase and hyphens, e.g. `feature/issue-photos`.
 3. Commit small and often: one logical change per commit, with an imperative message that says
-   what and why ("Quarantine expired goods on finish"). Do not wait until the end to commit, and
+   what and why ("Keep expired goods out of stock on finish"). Do not wait until the end to commit, and
    do not bundle unrelated changes.
 4. Push the branch regularly: `git push -u origin feature/<short-description>`.
 5. Keep it current: merge `dev` into your branch when `dev` moves (`git fetch && git merge

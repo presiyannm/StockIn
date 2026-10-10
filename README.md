@@ -66,12 +66,14 @@ Finding types: `short`, `missing`, `extra`, `mismatch`.
 
 ## Stock rules
 
-On finish: received goods count as `sellable`, except quantities reported `expired`, `damaged`,
-`wrong_item` or `other`, which go to `quarantine`. A `short` report does not move stock
-(those goods never arrived).
+On finish: received goods are added to stock (`stock_movements`), except quantities reported
+`expired`, `damaged` or `wrong_item`, which are not counted in stock and exist only in the
+report. Stock follows what was scanned: a shortage is already reflected because the missing goods
+were never scanned. A `short` or `other` report does not change stock; it is a note for the report. There is no quarantine bucket:
+goods are either sellable or left out of inventory.
 
-Current behavior. Agreed target (see BUSINESS_REQUIREMENTS.md): `other` does not quarantine
-unless the user marks the units, and excess goods enter stock only once the user confirms them.
+Agreed target (see BUSINESS_REQUIREMENTS.md), not built yet: excess goods enter stock only
+once the user confirms them.
 
 ## ai-service (port 3002)
 

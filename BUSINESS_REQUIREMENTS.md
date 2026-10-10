@@ -32,7 +32,7 @@ There is no time for customer interviews before this one-day hackathon. Present 
 | BR-04 | Keep a Report action available on every product during receiving and review, including a fully matched line such as 12/12. |
 | BR-05 | Support issue types: shortage, expired, damaged, wrong item and other. Capture affected quantity, notes, applicable expiry date and optional photo evidence. |
 | BR-06 | Preserve automated comparison findings separately from human-reported issues; include both in the final report. |
-| BR-07 | After human confirmation, record acceptable received goods as sellable and unsuitable received goods as quarantined. |
+| BR-07 | After human confirmation, add acceptable received goods to stock; unsuitable received goods (expired, damaged, wrong item) are not counted in stock and are kept only in the report. |
 | BR-08 | Prevent duplicate stock additions if finalization is clicked or requested more than once. |
 | BR-09 | Store the completed delivery and final statement so they can be retrieved later. |
 
@@ -40,9 +40,9 @@ There is no time for customer interviews before this one-day hackathon. Present 
 
 - A quantity match does not mean the goods are acceptable: 12 received out of 12 expected may still include 3 expired units.
 - Expected quantities come from the reviewed invoice; received quantities represent goods physically received, including unsuitable goods.
-- Sellable quantity equals received quantity minus quarantined quantity.
-- Missing goods do not increase either sellable or quarantined stock.
-- Quarantine quantities must not exceed received quantities, and the same physical units must not be counted twice because they have multiple defects.
+- Sellable quantity equals received quantity minus unsuitable quantity. There is no quarantine stock: goods are either sellable or not counted in inventory.
+- Missing goods do not increase stock.
+- Unsuitable quantities must not exceed received quantities, and the same physical units must not be counted twice because they have multiple defects.
 - Differences must remain visible. Do not silently alter counts or accept product substitutions to make a delivery match its invoice.
 - Resolving an unknown product's catalogue identity does not automatically resolve a delivery discrepancy.
 - Compare like units. Do not silently assume that one case, pack or box equals one individual item.
@@ -55,7 +55,7 @@ There is no time for customer interviews before this one-day hackathon. Present 
 The report must be in **English** and contain **all delivery items**, including correctly received items. Include:
 
 - Delivery reference, supplier and invoice number/date where available.
-- Product names and units, expected and received quantities, and sellable/quarantined quantities.
+- Product names and units, expected and received quantities, and sellable and unsuitable (not counted in stock) quantities.
 - Quantity discrepancies and all human-reported issues, with affected quantities, notes and applicable expiry dates.
 - Supporting photos associated with their issues, available for review.
 - Requested resolution, such as credit or replacement, when supplied by the user.
@@ -76,7 +76,7 @@ Automatic counting from photos, voice input, automatic supplier emails, payments
 |---|---|
 | Invoice quantity was misread | User corrects it; comparison and report use the corrected value. |
 | Expected 24, received 20 acceptable units | Show shortage of 4; add 20 sellable units. |
-| Expected 12, received 12, with 3 expired | Report remains available; retain issue evidence; add 9 sellable and 3 quarantined units. |
+| Expected 12, received 12, with 3 expired | Report remains available; retain issue evidence; add 9 units to stock; the 3 expired units are not counted and appear only in the report. |
 | Product barcode is unknown | Allow matching to an existing product or creating a new one without losing session data. |
 | Delivery contains both correct items and problems | English report includes all items and every recorded problem. |
 | Finalization is requested twice | Inventory is updated only once. |
@@ -87,7 +87,8 @@ Confirmed by the product owner. All components use these; do not assume differen
 
 - **Languages:** the interface is English. Invoices may be Bulgarian or English and the AI reads both. The supplier report is always English.
 - **Excess goods:** extra units are shown as an `extra` finding. They enter sellable stock only after the user explicitly confirms them at the confirmation step.
-- **`other` issues:** informational by default; they do not affect sellability. The user can explicitly mark the affected units as quarantined.
+- **Stock:** no quarantine bucket. Received goods are either sellable (added to stock) or unsuitable (expired, damaged, wrong item: not counted, recorded only in the report).
+- **`other` issues:** informational; they never affect stock.
 - **Pack-to-unit conversion:** not supported in the MVP. Only like units are compared; a unit mismatch is flagged for human review.
 - **Requested resolution** (credit or replacement): recorded once per delivery, as a choice plus an optional note.
 - **Report narrative:** not editable before printing. It is generated from saved records, so the printed report cannot drift from them.
@@ -96,9 +97,8 @@ Confirmed by the product owner. All components use these; do not assume differen
 
 The current code and README still do the following, which differs from the decisions above. Change each across components together, updating `packages/shared` and the README API table in the same change:
 
-- `other` is always quarantined (`QUARANTINE_TYPES` in api `reconcile.ts`, README stock rules).
-- There is no excess-goods confirmation step, no explicit quarantine choice on `other` issues, and no per-delivery requested resolution.
+- There is no excess-goods confirmation step and no per-delivery requested resolution.
 
 ## Integration priority
 
-Agree on the API/AI data contracts early, using `packages/shared` for shared types and the README HTTP API table for the frontend contract. Use the same meanings for expected, received, sellable and quarantined quantities, product matches and issues across all contributors. Integrate one complete delivery flow, including confirmation, stock updates and the supplier report, before polishing separate components.
+Agree on the API/AI data contracts early, using `packages/shared` for shared types and the README HTTP API table for the frontend contract. Use the same meanings for expected, received and sellable quantities, product matches and issues across all contributors. Integrate one complete delivery flow, including confirmation, stock updates and the supplier report, before polishing separate components.
