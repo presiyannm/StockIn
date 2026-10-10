@@ -6,11 +6,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n api,ai -c blue,magenta \"npm run dev -w @stockin/api\" \"npm run dev -w @stockin/ai-service\"",
+    "dev": "concurrently -n api,ai,web -c blue,magenta,green \"npm run dev -w @stockin/api\" \"npm run dev -w @stockin/ai-service\" \"npm run dev -w @stockin/web\"",
     "db:up": "docker compose up -d",
     "db:reset": "docker compose down -v && docker compose up -d",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "dev:web": "npm run dev -w @stockin/web"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
