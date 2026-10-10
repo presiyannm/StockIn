@@ -67,6 +67,38 @@ export const openApiDocument = {
         summary: "List the product catalogue",
         responses: { 200: json({ type: "array", items: ref("Product") }) },
       },
+      post: {
+        tags: ["Catalogue"],
+        summary: "Add a product the catalogue does not know yet (e.g. an unknown barcode)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name"],
+                properties: {
+                  name: { type: "string" },
+                  barcode: { type: "string", nullable: true },
+                  unit: { type: "string", default: "pcs" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: json(ref("Product")),
+          400: err("name is required"),
+          409: err("Barcode already belongs to another product"),
+        },
+      },
+    },
+    "/api/stock": {
+      get: {
+        tags: ["Catalogue"],
+        summary: "Current stock per product (sum of stock movements written by finish)",
+        responses: { 200: json({ type: "array", items: ref("StockRow") }) },
+      },
     },
     "/api/suppliers": {
       get: {
@@ -97,7 +129,7 @@ export const openApiDocument = {
     "/api/deliveries/{id}": {
       get: {
         tags: ["Delivery"],
-        summary: "Everything the screens need: lines, scans, findings, issues with photos, report",
+        summary: "Everything the screens need: lines, scans, findings, issues with photos, stock preview, report",
         parameters: [deliveryId],
         responses: { 200: json(ref("DeliveryDetail")), 404: err("Delivery not found") },
       },
@@ -174,7 +206,42 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/deliveries/{id}/invoice-lines": {
+      post: {
+        tags: ["Receiving"],
+        summary: "Add an invoice line the AI missed",
+        parameters: [deliveryId],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["product_id", "qty"],
+                properties: { product_id: { type: "integer" }, qty: { type: "number" } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: json(ref("InvoiceLine")),
+          400: err("product_id and a positive qty are required"),
+          404: err("Delivery not found"),
+          409: err("Delivery is already closed"),
+        },
+      },
+    },
     "/api/invoice-lines/{id}": {
+      delete: {
+        tags: ["Receiving"],
+        summary: "Remove a misread invoice line",
+        parameters: [{ ...idParam, description: "Invoice line id" }],
+        responses: {
+          200: json(ref("Ok")),
+          404: err("Invoice line not found"),
+          409: err("Delivery is already closed"),
+        },
+      },
       patch: {
         tags: ["Receiving"],
         summary: "Correct an invoice line (quantity or matched product)",
@@ -350,7 +417,33 @@ export const openApiDocument = {
           id: { type: "integer" },
           name: { type: "string" },
           barcode: { type: "string", nullable: true },
+          unit: { type: "string" },
           aliases: { type: "array", items: { type: "string" } },
+        },
+      },
+      StockRow: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          name: { type: "string" },
+          barcode: { type: "string", nullable: true },
+          unit: { type: "string" },
+          in_stock: { type: "number" },
+          last_received: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      ItemRow: {
+        type: "object",
+        description: "One delivery item as finish would write it to stock and the report",
+        properties: {
+          name: { type: "string" },
+          unit: { type: "string" },
+          expected: { type: "number" },
+          received: { type: "number" },
+          in_stock: { type: "number", description: "Sellable units added to stock" },
+          not_counted: { type: "number", description: "Received units left out of stock" },
+          note: { type: "string" },
+          unmatched: { type: "boolean", description: "Invoice line not matched to a catalogue product" },
         },
       },
       Supplier: {
@@ -399,6 +492,7 @@ export const openApiDocument = {
           unit_price: { type: "number", nullable: true },
           confidence: { type: "number", nullable: true },
           received_qty: { type: "number", description: "Only on GET /api/deliveries/{id}" },
+          unit: { type: "string", description: "Product unit; only on GET /api/deliveries/{id}" },
         },
       },
       Scan: {
@@ -483,6 +577,7 @@ export const openApiDocument = {
           findings: { type: "array", items: ref("Finding") },
           issues: { type: "array", items: ref("Issue") },
           excess_accepted: { type: "array", items: { type: "integer" }, description: "Product ids whose extra units were confirmed" },
+          items: { type: "array", items: ref("ItemRow"), description: "Preview of what finish writes to stock, one row per delivery item" },
           report: { allOf: [ref("Report")], nullable: true },
         },
       },

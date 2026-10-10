@@ -47,12 +47,16 @@ npm run dev                                     # api on :3001, ai-service on :3
 |---|---|---|
 | GET | `/api/health` | DB and ai-service status |
 | GET | `/api/products`, `/api/suppliers` | Catalogue |
+| POST | `/api/products` | `{name, barcode?, unit?}`: add a product the catalogue does not know (409 if the barcode is taken) |
+| GET | `/api/stock` | Current stock per product (sum of stock movements) |
 | GET/POST | `/api/deliveries` | List / start a delivery |
 | PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery: `{requested_resolution: "credit" \| "replacement" \| null, resolution_note}` (409 once closed) |
 | PUT | `/api/deliveries/:id/excess/:productId` | `{accept: boolean}`: confirm that units above the invoice may enter stock (409 once closed) |
-| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, report |
+| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, `items` (preview of what finish writes to stock), report |
 | POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines |
 | PATCH | `/api/invoice-lines/:id` | Fix a line (`qty`, `product_id`) |
+| POST | `/api/deliveries/:id/invoice-lines` | `{product_id, qty}`: add a line the AI missed (409 once closed) |
+| DELETE | `/api/invoice-lines/:id` | Remove a misread line (409 once closed) |
 | POST | `/api/deliveries/:id/scans` | `{barcode}` or `{product_id, qty, method}` |
 | DELETE | `/api/deliveries/:id/scans/:productId` | Remove scans for a product |
 | POST | `/api/deliveries/:id/identify` | Photo of an item with no barcode; AI matches it to the catalogue |
