@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildItemRows, formatItemRows, reconcile, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, reconcile, resolutionText, stockSplit } from "./reconcile.js";
 
 const names = new Map([
   [1, "Milk 1L"],
@@ -132,4 +132,10 @@ test("report items include a perfectly matched line and unmatched invoice lines"
   });
   assert.equal(rows.length, 3);
   assert.match(formatItemRows(rows), /Mystery item: expected 4, not matched/);
+});
+
+test("requested resolution is only what the user chose", () => {
+  assert.equal(resolutionText(null, "ignored"), null);
+  assert.equal(resolutionText("credit", null), "Credit note requested.");
+  assert.equal(resolutionText("replacement", "Next Monday"), "Replacement requested. Next Monday");
 });

@@ -97,7 +97,7 @@ Confirmed by the product owner. All components use these; do not assume differen
 
 The current code and README still do the following, which differs from the decisions above. Change each across components together, updating `packages/shared` and the README API table in the same change:
 
-- There is no excess-goods confirmation step and no per-delivery requested resolution.
+- There is no excess-goods confirmation step.
 
 ## Integration priority
 

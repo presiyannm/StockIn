@@ -9,7 +9,7 @@ import {
   identifyProduct,
   type ImageInput,
 } from "./aiClient.js";
-import { buildItemRows, formatItemRows, reconcile, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, reconcile, resolutionText, stockSplit } from "./reconcile.js";
 import { downloadPhoto, photoUrl, uploadPhoto } from "./storage.js";
 import { renderReportHtml } from "./reportHtml.js";
 
@@ -83,6 +83,25 @@ export async function registerRoutes(app: FastifyInstance) {
     const [row] = await query(
       "INSERT INTO deliveries (supplier_id) VALUES ($1) RETURNING *",
       [body.supplier_id ?? null],
+    );
+    return row;
+  });
+
+  // The user's requested resolution for the whole delivery (credit or replacement).
+  app.patch("/api/deliveries/:id", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const b = (req.body ?? {}) as { requested_resolution?: string | null; resolution_note?: string | null };
+    if (b.requested_resolution != null && !["credit", "replacement"].includes(b.requested_resolution)) {
+      return reply.code(400).send({ error: "requested_resolution must be credit, replacement or null" });
+    }
+    const delivery = await getDelivery(id);
+    if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
+    if (delivery.status === "closed") {
+      return reply.code(409).send({ error: "Delivery is already closed" });
+    }
+    const [row] = await query(
+      "UPDATE deliveries SET requested_resolution = $2, resolution_note = $3 WHERE id = $1 RETURNING *",
+      [id, b.requested_resolution ?? null, b.resolution_note || null],
     );
     return row;
   });
@@ -418,7 +437,8 @@ export async function registerRoutes(app: FastifyInstance) {
     ];
 
     let message = "";
-    let resolution = "Please issue a credit note or send a replacement for the items above.";
+    // Only what the user chose; the AI never invents a requested resolution.
+    const resolution = resolutionText(delivery.requested_resolution, delivery.resolution_note);
     if (items.length) {
       try {
         const draft = await draftSupplierMessage({
@@ -427,7 +447,6 @@ export async function registerRoutes(app: FastifyInstance) {
           items,
         });
         message = draft.message;
-        resolution = draft.requested_resolution;
       } catch (e) {
         req.log.warn(e, "AI draft failed, using template");
       }
@@ -436,7 +455,6 @@ export async function registerRoutes(app: FastifyInstance) {
       }
     } else {
       message = "No problems found with this delivery.";
-      resolution = "";
     }
     const split = stockSplit(scans, issues);
     const lineRows = await query(

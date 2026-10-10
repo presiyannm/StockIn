@@ -48,6 +48,7 @@ npm run dev                                     # api on :3001, ai-service on :3
 | GET | `/api/health` | DB and ai-service status |
 | GET | `/api/products`, `/api/suppliers` | Catalogue |
 | GET/POST | `/api/deliveries` | List / start a delivery |
+| PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery: `{requested_resolution: "credit" \| "replacement" \| null, resolution_note}` (409 once closed) |
 | GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), report |
 | POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines |
 | PATCH | `/api/invoice-lines/:id` | Fix a line (`qty`, `product_id`) |

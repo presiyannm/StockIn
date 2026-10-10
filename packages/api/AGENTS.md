@@ -46,6 +46,8 @@ This package must never hold the Anthropic key.
   AI call fails. `AiServiceError` becomes a 503 through the error handler.
 - **Report language:** the supplier report is always English, even for a Bulgarian invoice.
   The interface is English too. Invoice `language` is still extracted but does not affect the report.
+- **Requested resolution** is set by the user once per delivery (`PATCH /api/deliveries/:id`) and
+  copied to the report by `finish`. The AI never writes or suggests one.
 - **Findings come only from `reconcile`.** Invoice lines the AI could not match to a product
   become `mismatch` findings for a human; never guess a match here.
 - **Issues:** any product can be reported, including ones that matched perfectly. Types:

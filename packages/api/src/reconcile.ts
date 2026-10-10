@@ -206,3 +206,10 @@ export function formatItemRows(rows: ItemRow[]): string {
     })
     .join("\n");
 }
+
+/** The requested resolution as printed on the report; null when the user chose none. */
+export function resolutionText(choice: string | null, note: string | null): string | null {
+  if (choice !== "credit" && choice !== "replacement") return null;
+  const label = choice === "credit" ? "Credit note requested." : "Replacement requested.";
+  return note ? `${label} ${note}` : label;
+}

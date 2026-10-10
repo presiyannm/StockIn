@@ -180,16 +180,15 @@ export async function draftSupplierMessage(
           "Write the cover message in English.\n" +
           `Supplier: ${input.supplier}\nInvoice: ${input.invoiceNumber ?? "n/a"}\nReported items:\n` +
           input.items.map((i) => `- ${i}`).join("\n") +
-          `\n\nAlso state in one short sentence the requested resolution (credit note or replacement).`,
+          "\n\nDo not ask for a credit, replacement or any other resolution; the shop states that separately.",
       },
     ],
     schema: {
       type: "object",
       properties: {
         message: { type: "string" },
-        requested_resolution: { type: "string" },
       },
-      required: ["message", "requested_resolution"],
+      required: ["message"],
     },
     maxTokens: 1024,
   });
