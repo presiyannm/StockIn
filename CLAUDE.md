@@ -1,5 +1,11 @@
 @AGENTS.md
 
+@BUSINESS_REQUIREMENTS.md
+
+Shared product requirements: [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md).
+Read alongside the existing settings; confirmed product decisions there take precedence
+over older product descriptions, including report language and coverage.
+
 ## Claude Code notes
 
 - `AGENTS.md` (imported above) is the source of truth for the repo. Update it, not this file,
