@@ -241,3 +241,27 @@ export function resolutionText(choice: string | null, note: string | null): stri
   const label = choice === "credit" ? "Credit note requested." : "Replacement requested.";
   return note ? `${label} ${note}` : label;
 }
+
+/**
+ * Products where expired/damaged/wrong-item quantities add up to more than
+ * was received. Issues carry no per-unit identity, so the same physical unit
+ * reported under two types would be counted twice; instead of silently
+ * clamping, finish asks a human to fix the numbers.
+ */
+export function overReportedProducts(
+  scans: ScanIn[],
+  issues: IssueIn[],
+): { product_id: number; reported: number; received: number }[] {
+  const received = new Map<number, number>();
+  for (const s of scans) {
+    received.set(s.product_id, (received.get(s.product_id) ?? 0) + s.qty);
+  }
+  const reported = new Map<number, number>();
+  for (const i of issues) {
+    if (!EXCLUDED_TYPES.has(i.type)) continue;
+    reported.set(i.product_id, (reported.get(i.product_id) ?? 0) + i.qty);
+  }
+  return [...reported]
+    .filter(([id, qty]) => qty > (received.get(id) ?? 0))
+    .map(([product_id, qty]) => ({ product_id, reported: qty, received: received.get(product_id) ?? 0 }));
+}

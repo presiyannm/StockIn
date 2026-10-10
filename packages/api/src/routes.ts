@@ -9,7 +9,7 @@ import {
   identifyProduct,
   type ImageInput,
 } from "./aiClient.js";
-import { buildItemRows, formatItemRows, reconcile, resolutionText, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, overReportedProducts, reconcile, resolutionText, stockSplit } from "./reconcile.js";
 import { downloadPhoto, photoUrl, uploadPhoto } from "./storage.js";
 import { renderReportHtml } from "./reportHtml.js";
 
@@ -452,6 +452,17 @@ export async function registerRoutes(app: FastifyInstance) {
          FROM findings f WHERE f.delivery_id = $1 ORDER BY f.id`,
       [id],
     );
+
+    const over = overReportedProducts(scans as any, issues as any);
+    if (over.length) {
+      const names = new Map(issues.map((i) => [i.product_id, i.product_name]));
+      return reply.code(409).send({
+        error:
+          "Expired, damaged and wrong-item reports add up to more than was received. " +
+          "Count each physical unit under one issue type only, then finish again.",
+        products: over.map((o) => ({ ...o, name: names.get(o.product_id) })),
+      });
+    }
 
     // Findings not already covered by a human issue still go on the report.
     const coveredProducts = new Set(issues.map((i) => i.product_id));

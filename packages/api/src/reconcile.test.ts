@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildItemRows, formatItemRows, reconcile, resolutionText, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, overReportedProducts, reconcile, resolutionText, stockSplit } from "./reconcile.js";
 
 const names = new Map([
   [1, "Milk 1L"],
@@ -163,4 +163,17 @@ test("excluded goods count first, so expired units are not also treated as exces
 test("a product that is not on the invoice is all excess until confirmed", () => {
   const split = stockSplit([{ product_id: 9, qty: 3 }], [], { expected: new Map(), accepted: new Set() });
   assert.deepEqual(split[0], { product_id: 9, sellable: 0, excluded: 0, unconfirmed_excess: 3 });
+});
+
+test("defect reports above the received quantity are flagged, not clamped", () => {
+  const scans = [{ product_id: 1, qty: 5 }];
+  assert.deepEqual(overReportedProducts(scans, [{ product_id: 1, type: "expired", qty: 3 }]), []);
+  assert.deepEqual(
+    overReportedProducts(scans, [
+      { product_id: 1, type: "expired", qty: 3 },
+      { product_id: 1, type: "damaged", qty: 3 },
+    ]),
+    [{ product_id: 1, reported: 6, received: 5 }],
+  );
+  assert.deepEqual(overReportedProducts(scans, [{ product_id: 1, type: "short", qty: 9 }]), []);
 });
