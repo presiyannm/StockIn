@@ -5,6 +5,11 @@ scans what arrives, and reports problems (short, expired, damaged...). The AI re
 invoice, reconciliation flags differences, and a printable report goes back to the supplier.
 Stock is updated with reported goods kept out of sellable stock.
 
+See [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md) for the agreed MVP behavior,
+acceptance examples and open decisions. Supplier reports must be English and include all
+delivery items. These requirements describe the target behavior; the API and stock rules
+below document the current implementation.
+
 ## Layout
 
 ```
@@ -64,6 +69,9 @@ Finding types: `short`, `missing`, `extra`, `mismatch`.
 On finish: received goods count as `sellable`, except quantities reported `expired`, `damaged`,
 `wrong_item` or `other`, which go to `quarantine`. A `short` report does not move stock
 (those goods never arrived).
+
+Current behavior. Agreed target (see BUSINESS_REQUIREMENTS.md): `other` does not quarantine
+unless the user marks the units, and excess goods enter stock only once the user confirms them.
 
 ## ai-service (port 3002)
 
