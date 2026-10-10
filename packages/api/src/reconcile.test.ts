@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reconcile, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, reconcile, stockSplit } from "./reconcile.js";
 
 const names = new Map([
   [1, "Milk 1L"],
@@ -99,4 +99,37 @@ test("excluded cannot exceed what was received", () => {
     [{ product_id: 1, type: "damaged", qty: 5 }],
   );
   assert.deepEqual(split[0], { product_id: 1, sellable: 0, excluded: 2 });
+});
+
+test("report items include a perfectly matched line and unmatched invoice lines", () => {
+  const products = new Map([
+    [1, { name: "Milk 1L", unit: "pcs" }],
+    [2, { name: "Yogurt 400g", unit: "pcs" }],
+  ]);
+  const rows = buildItemRows(
+    [
+      { id: 1, product_id: 1, raw_text: "Milk", qty: 12 },
+      { id: 2, product_id: 2, raw_text: "Yogurt", qty: 6 },
+      { id: 3, product_id: null, raw_text: "Mystery item", qty: 4 },
+    ],
+    [
+      { product_id: 1, qty: 12 },
+      { product_id: 2, qty: 5 },
+    ],
+    [
+      { product_id: 1, sellable: 9 },
+      { product_id: 2, sellable: 5 },
+    ],
+    products,
+  );
+  assert.deepEqual(rows[0], {
+    name: "Milk 1L",
+    unit: "pcs",
+    expected: 12,
+    received: 12,
+    in_stock: 9,
+    not_counted: 3,
+  });
+  assert.equal(rows.length, 3);
+  assert.match(formatItemRows(rows), /Mystery item: expected 4, not matched/);
 });

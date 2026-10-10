@@ -57,7 +57,7 @@ npm run dev                                     # api on :3001, ai-service on :3
 | POST | `/api/deliveries/:id/reconcile` | Compare invoice vs scans into findings (idempotent) |
 | POST | `/api/deliveries/:id/issues` | Report on any product (multipart: `product_id`, `type`, `qty`, `expiry_date`, `note`, `photo`) |
 | DELETE | `/api/issues/:id` | Remove a report |
-| POST | `/api/deliveries/:id/finish` | Write stock, draft the supplier report, close (idempotent) |
+| POST | `/api/deliveries/:id/finish` | Write stock, draft the supplier report (lists every delivery item plus problems), close (idempotent) |
 | GET | `/api/deliveries/:id/report.html` | Printable report for the supplier |
 | GET | `/api/files/*` | Serves stored photos when R2 is not configured |
 

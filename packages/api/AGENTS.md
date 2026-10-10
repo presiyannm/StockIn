@@ -17,8 +17,8 @@ and the only one the web app talks to. Project-wide rules are in the root `AGENT
 |---|---|
 | `index.ts` | Builds the Fastify app, registers CORS, multipart and routes |
 | `routes.ts` | Every HTTP route and the shared error handler |
-| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings) and `stockSplit` (sellable vs excluded) |
-| `reconcile.test.ts` | Unit tests for the two functions above |
+| `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings), `stockSplit` (sellable vs excluded) and `buildItemRows` (every delivery item for the report) |
+| `reconcile.test.ts` | Unit tests for the functions above |
 | `aiClient.ts` | The only code that calls `ai-service` (`extractInvoice`, `identifyProduct`, `draftSupplierMessage`, `aiAvailable`) |
 | `storage.ts` | R2 upload/download/presigned URLs, with a local `uploads/` fallback when `R2_*` is empty |
 | `db.ts` | `pg` pool, `query` helper, DATE type parser |

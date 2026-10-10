@@ -9,7 +9,7 @@ import {
   identifyProduct,
   type ImageInput,
 } from "./aiClient.js";
-import { reconcile, stockSplit } from "./reconcile.js";
+import { buildItemRows, formatItemRows, reconcile, stockSplit } from "./reconcile.js";
 import { downloadPhoto, photoUrl, uploadPhoto } from "./storage.js";
 import { renderReportHtml } from "./reportHtml.js";
 
@@ -438,9 +438,25 @@ export async function registerRoutes(app: FastifyInstance) {
       message = "No problems found with this delivery.";
       resolution = "";
     }
-    const body = [message, "", ...items.map((t, n) => `${n + 1}. ${t}`)].join("\n");
-
     const split = stockSplit(scans, issues);
+    const lineRows = await query(
+      "SELECT id, product_id, raw_text, qty::float AS qty FROM invoice_lines WHERE delivery_id = $1 ORDER BY id",
+      [id],
+    );
+    const productInfo = new Map(
+      (await query<{ id: number; name: string; unit: string }>("SELECT id, name, unit FROM products")).map(
+        (p) => [p.id, { name: p.name, unit: p.unit }],
+      ),
+    );
+    const itemTable = formatItemRows(buildItemRows(lineRows as any, scans as any, split, productInfo));
+    const body = [
+      message,
+      "",
+      "Delivery items:",
+      itemTable,
+      ...(items.length ? ["", "Problems:", ...items.map((t, n) => `${n + 1}. ${t}`)] : []),
+    ].join("\n");
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
