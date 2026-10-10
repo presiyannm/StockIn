@@ -39,7 +39,6 @@ export type IdentifyResult = {
 
 /** POST /draft-message request */
 export type DraftMessageRequest = {
-  language: Language;
   supplier: string;
   invoiceNumber: string | null;
   items: string[];

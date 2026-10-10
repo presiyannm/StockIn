@@ -45,8 +45,7 @@ This package must never hold the Anthropic key.
   never leaves a half-saved invoice. Report drafting falls back to a plain template when the
   AI call fails. `AiServiceError` becomes a 503 through the error handler.
 - **Report language:** the supplier report is always English, even for a Bulgarian invoice.
-  The interface is English too. (Target behavior; the current code still switches to `bg` for
-  Cyrillic invoices until the change in BUSINESS_REQUIREMENTS.md is implemented.)
+  The interface is English too. Invoice `language` is still extracted but does not affect the report.
 - **Findings come only from `reconcile`.** Invoice lines the AI could not match to a product
   become `mismatch` findings for a human; never guess a match here.
 - **Issues:** any product can be reported, including ones that matched perfectly. Types:

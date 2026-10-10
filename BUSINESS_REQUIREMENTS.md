@@ -96,7 +96,6 @@ Confirmed by the product owner. All components use these; do not assume differen
 
 The current code and README still do the following, which differs from the decisions above. Change each across components together, updating `packages/shared` and the README API table in the same change:
 
-- The report switches to Bulgarian for Cyrillic invoices (api `routes.ts`, ai-service `ai.ts`).
 - `other` is always quarantined (`QUARANTINE_TYPES` in api `reconcile.ts`, README stock rules).
 - There is no excess-goods confirmation step, no explicit quarantine choice on `other` issues, and no per-delivery requested resolution.
 
