@@ -68,7 +68,8 @@ Finding types: `short`, `missing`, `extra`, `mismatch`.
 
 On finish: received goods are added to stock (`stock_movements`), except quantities reported
 `expired`, `damaged` or `wrong_item`, which are not counted in stock and exist only in the
-report. A `short` or `other` report does not change stock. There is no quarantine bucket:
+report. Stock follows what was scanned: a shortage is already reflected because the missing goods
+were never scanned. A `short` or `other` report does not change stock; it is a note for the report. There is no quarantine bucket:
 goods are either sellable or left out of inventory.
 
 Agreed target (see BUSINESS_REQUIREMENTS.md), not built yet: excess goods enter stock only
