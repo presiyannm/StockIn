@@ -69,8 +69,8 @@ Env files are per service: `packages/api/.env` and `packages/ai-service/.env` (s
 - Postgres in Docker (host port 5433 to avoid clashing with a local Postgres on 5432).
 - Photos in Cloudflare R2 (S3 API); with empty `R2_*` vars the api falls back to local disk.
 - AI: Claude API via `@anthropic-ai/sdk`, model `claude-sonnet-5-5` (set by `CLAUDE_MODEL`).
-- UI language is English. Invoices may be Bulgarian or English. The supplier report is written
-  in the invoice language.
+- UI language is English. Invoices may be Bulgarian or English and are read in either language.
+  The supplier report is always English, whatever the invoice language.
 - No login. Single business.
 
 ## Rules for the whole repo

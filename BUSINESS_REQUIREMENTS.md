@@ -81,17 +81,24 @@ Automatic counting from photos, voice input, automatic supplier emails, payments
 | Delivery contains both correct items and problems | English report includes all items and every recorded problem. |
 | Finalization is requested twice | Inventory is updated only once. |
 
-## Business decisions still open
+## Product decisions
 
-Do not silently make different assumptions across components. Agree on the following before implementing the affected behavior:
+Confirmed by the product owner. All components use these; do not assume differently.
 
-- How acceptable excess goods are accepted into stock.
-- Whether an `other` issue affects sellability.
-- Pack-to-unit conversion rules, if required for the demo.
-- Whether requested resolution is recorded per issue or per delivery.
-- Whether the user can edit the report narrative before printing.
+- **Languages:** the interface is English. Invoices may be Bulgarian or English and the AI reads both. The supplier report is always English.
+- **Excess goods:** extra units are shown as an `extra` finding. They enter sellable stock only after the user explicitly confirms them at the confirmation step.
+- **`other` issues:** informational by default; they do not affect sellability. The user can explicitly mark the affected units as quarantined.
+- **Pack-to-unit conversion:** not supported in the MVP. Only like units are compared; a unit mismatch is flagged for human review.
+- **Requested resolution** (credit or replacement): recorded once per delivery, as a choice plus an optional note.
+- **Report narrative:** not editable before printing. It is generated from saved records, so the printed report cannot drift from them.
 
-The current README describes quarantining `other` issues. That is existing implementation behavior, not a confirmed answer to the open sellability decision above. Agree on the decision before changing it across components.
+## Implementation status of these decisions
+
+The current code and README still do the following, which differs from the decisions above. Change each across components together, updating `packages/shared` and the README API table in the same change:
+
+- The report switches to Bulgarian for Cyrillic invoices (api `routes.ts`, ai-service `ai.ts`).
+- `other` is always quarantined (`QUARANTINE_TYPES` in api `reconcile.ts`, README stock rules).
+- There is no excess-goods confirmation step, no explicit quarantine choice on `other` issues, and no per-delivery requested resolution.
 
 ## Integration priority
 

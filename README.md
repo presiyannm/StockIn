@@ -70,6 +70,9 @@ On finish: received goods count as `sellable`, except quantities reported `expir
 `wrong_item` or `other`, which go to `quarantine`. A `short` report does not move stock
 (those goods never arrived).
 
+Current behavior. Agreed target (see BUSINESS_REQUIREMENTS.md): `other` does not quarantine
+unless the user marks the units, and excess goods enter stock only once the user confirms them.
+
 ## ai-service (port 3002)
 
 All routes except `/health` need the `x-service-token` header (`AI_SERVICE_TOKEN`).
