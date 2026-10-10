@@ -134,7 +134,8 @@ export const routeDocs = {
  * serialization are switched off so the routes behave exactly as before.
  */
 export async function registerDocs(app: FastifyInstance) {
-  app.setValidatorCompiler(() => () => ({ value: true }));
+  // `value` replaces the request body, so hand the data back untouched.
+  app.setValidatorCompiler(() => (data) => ({ value: data }));
   app.setSerializerCompiler(() => (data) => JSON.stringify(data));
 
   await app.register(swagger, {
