@@ -97,7 +97,58 @@ Env files are per service: `packages/api/.env` and `packages/ai-service/.env` (s
 4. Report results honestly, including what you could not test. The AI on messy real-world
    invoice photos is not yet validated.
 
-## Git
+## Git workflow
 
-Remote: `https://github.com/presiyannm/StockIn.git`, branch `main`. Small commits with
-descriptive messages. Ask before pushing or force-pushing, and never rewrite shared history.
+Remote: `https://github.com/presiyannm/StockIn.git`.
+
+### Branches
+
+| Branch | Purpose | Who changes it |
+|---|---|---|
+| `dev` | Integration branch. Every finished feature lands here first. | Pull requests from feature branches |
+| `main` | Stable, tested code. | Pull requests from `dev` |
+| `prod` | What is released/deployed. | Pull requests from `main` |
+
+Code only moves forward: `feature branch -> dev -> main -> prod`. Never commit or push directly
+to `dev`, `main` or `prod`, and never force-push them.
+
+### Working on a feature
+
+1. Start from an up-to-date `dev`: `git checkout dev && git pull`.
+2. Create your own branch for the work: `git checkout -b feature/<short-description>`.
+   Prefixes: `feature/` new behaviour, `fix/` bug fixes, `docs/` documentation only,
+   `chore/` tooling and housekeeping. Use lowercase and hyphens, e.g. `feature/issue-photos`.
+3. Commit small and often: one logical change per commit, with an imperative message that says
+   what and why ("Quarantine expired goods on finish"). Do not wait until the end to commit, and
+   do not bundle unrelated changes.
+4. Push the branch regularly: `git push -u origin feature/<short-description>`.
+5. Keep it current: merge `dev` into your branch when `dev` moves (`git fetch && git merge
+   origin/dev`) and resolve conflicts on your branch, not on `dev`.
+6. When it is ready, open a pull request into `dev`.
+
+### Pull requests
+
+- Target `dev` (not `main`, not `prod`). Release PRs are the only exception: `dev -> main`, then
+  `main -> prod`.
+- Title says what changed. The description says why, what you tested, and what a reviewer should
+  look at. Link the issue or task if there is one.
+- Before opening: `npm run typecheck` and `npm test` pass, test data is cleaned up, no secrets in
+  the diff (see the secrets rule above), and `README.md` and the relevant `AGENTS.md` are updated
+  if you changed a route, a type, a rule or a command.
+- Keep PRs small and about one thing. A PR that touches several packages should say so.
+- Merge with a merge commit, so the small commits on your branch are preserved. Delete the branch
+  after merging.
+
+### Hotfixes
+
+For a production bug: branch `hotfix/<description>` from `prod`, open a PR into `prod`, then
+merge the same fix back into `main` and `dev` so they do not lose it.
+
+### For AI agents
+
+- Before changing any file, check the current branch. If it is `dev`, `main` or `prod`, create a
+  feature branch first.
+- Commit as you go in small commits. Push the branch and open (or give the user the link to open)
+  a PR into `dev`. Do not merge PRs yourself unless asked.
+- Ask before pushing, and never rewrite shared history. Rebasing or amending is only acceptable on
+  your own unpushed commits.
