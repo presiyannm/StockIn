@@ -77,11 +77,13 @@ test("expired goods stay out of stock; short complaints do not move stock", () =
     product_id: 1,
     sellable: 9,
     excluded: 3,
+    unconfirmed_excess: 0,
   });
   assert.deepEqual(split.find((s) => s.product_id === 2), {
     product_id: 2,
     sellable: 8,
     excluded: 0,
+    unconfirmed_excess: 0,
   });
 });
 
@@ -90,7 +92,7 @@ test("an other issue is informational and does not remove goods from stock", () 
     [{ product_id: 1, qty: 10 }],
     [{ product_id: 1, type: "other", qty: 2 }],
   );
-  assert.deepEqual(split[0], { product_id: 1, sellable: 10, excluded: 0 });
+  assert.deepEqual(split[0], { product_id: 1, sellable: 10, excluded: 0, unconfirmed_excess: 0 });
 });
 
 test("excluded cannot exceed what was received", () => {
@@ -98,7 +100,7 @@ test("excluded cannot exceed what was received", () => {
     [{ product_id: 1, qty: 2 }],
     [{ product_id: 1, type: "damaged", qty: 5 }],
   );
-  assert.deepEqual(split[0], { product_id: 1, sellable: 0, excluded: 2 });
+  assert.deepEqual(split[0], { product_id: 1, sellable: 0, excluded: 2, unconfirmed_excess: 0 });
 });
 
 test("report items include a perfectly matched line and unmatched invoice lines", () => {
@@ -117,8 +119,8 @@ test("report items include a perfectly matched line and unmatched invoice lines"
       { product_id: 2, qty: 5 },
     ],
     [
-      { product_id: 1, sellable: 9 },
-      { product_id: 2, sellable: 5 },
+      { product_id: 1, sellable: 9, excluded: 3, unconfirmed_excess: 0 },
+      { product_id: 2, sellable: 5, excluded: 0, unconfirmed_excess: 0 },
     ],
     products,
   );
@@ -138,4 +140,27 @@ test("requested resolution is only what the user chose", () => {
   assert.equal(resolutionText(null, "ignored"), null);
   assert.equal(resolutionText("credit", null), "Credit note requested.");
   assert.equal(resolutionText("replacement", "Next Monday"), "Replacement requested. Next Monday");
+});
+
+test("extra units stay out of stock until the user confirms them", () => {
+  const scans = [{ product_id: 1, qty: 14 }];
+  const expected = new Map([[1, 12]]);
+  const waiting = stockSplit(scans, [], { expected, accepted: new Set() });
+  assert.deepEqual(waiting[0], { product_id: 1, sellable: 12, excluded: 0, unconfirmed_excess: 2 });
+  const confirmed = stockSplit(scans, [], { expected, accepted: new Set([1]) });
+  assert.deepEqual(confirmed[0], { product_id: 1, sellable: 14, excluded: 0, unconfirmed_excess: 0 });
+});
+
+test("excluded goods count first, so expired units are not also treated as excess", () => {
+  const split = stockSplit(
+    [{ product_id: 1, qty: 14 }],
+    [{ product_id: 1, type: "expired", qty: 2 }],
+    { expected: new Map([[1, 12]]), accepted: new Set() },
+  );
+  assert.deepEqual(split[0], { product_id: 1, sellable: 12, excluded: 2, unconfirmed_excess: 0 });
+});
+
+test("a product that is not on the invoice is all excess until confirmed", () => {
+  const split = stockSplit([{ product_id: 9, qty: 3 }], [], { expected: new Map(), accepted: new Set() });
+  assert.deepEqual(split[0], { product_id: 9, sellable: 0, excluded: 0, unconfirmed_excess: 3 });
 });

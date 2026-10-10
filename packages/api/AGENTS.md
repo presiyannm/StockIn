@@ -33,7 +33,8 @@ This package must never hold the Anthropic key.
 
 - **Stock rules** (`stockSplit`): received goods enter stock, except quantity reported
   `expired`, `damaged` or `wrong_item`, which is left out of stock and kept only in the report
-  (capped at what was received). `short` and `other` reports do not move stock. Changing these changes real inventory, so
+  (capped at what was received). `short` and `other` reports do not move stock. Units above the invoiced quantity stay out of
+  stock until confirmed per product (`excess_acceptances`, `PUT /api/deliveries/:id/excess/:productId`). Changing these changes real inventory, so
   update the tests and the README in the same change.
 - **Idempotency:** `reconcile` and `finish` must be safe to call twice. `finish` on a closed
   delivery returns the existing report and writes nothing.

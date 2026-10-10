@@ -49,7 +49,8 @@ npm run dev                                     # api on :3001, ai-service on :3
 | GET | `/api/products`, `/api/suppliers` | Catalogue |
 | GET/POST | `/api/deliveries` | List / start a delivery |
 | PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery: `{requested_resolution: "credit" \| "replacement" \| null, resolution_note}` (409 once closed) |
-| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), report |
+| PUT | `/api/deliveries/:id/excess/:productId` | `{accept: boolean}`: confirm that units above the invoice may enter stock (409 once closed) |
+| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, report |
 | POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines |
 | PATCH | `/api/invoice-lines/:id` | Fix a line (`qty`, `product_id`) |
 | POST | `/api/deliveries/:id/scans` | `{barcode}` or `{product_id, qty, method}` |
@@ -73,8 +74,8 @@ report. Stock follows what was scanned: a shortage is already reflected because 
 were never scanned. A `short` or `other` report does not change stock; it is a note for the report. There is no quarantine bucket:
 goods are either sellable or left out of inventory.
 
-Agreed target (see BUSINESS_REQUIREMENTS.md), not built yet: excess goods enter stock only
-once the user confirms them.
+Units above the invoiced quantity (including products not on the invoice) are not added to stock
+until the user confirms them with the excess route; the report lists them as not yet confirmed.
 
 ## ai-service (port 3002)
 

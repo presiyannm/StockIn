@@ -94,6 +94,12 @@ CREATE TABLE reports (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE excess_acceptances (
+  delivery_id int NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+  product_id int NOT NULL REFERENCES products(id),
+  PRIMARY KEY (delivery_id, product_id)
+);
+
 CREATE TABLE stock_movements (
   id serial PRIMARY KEY,
   delivery_id int NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,

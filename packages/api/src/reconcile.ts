@@ -109,12 +109,30 @@ export type IssueIn = { product_id: number; type: string; qty: number };
  * so neither removes goods that were received. */
 const EXCLUDED_TYPES = new Set(["expired", "damaged", "wrong_item"]);
 
+export type ExcessRule = {
+  /** Invoiced quantity per product (0 when the product is not on the invoice). */
+  expected: Map<number, number>;
+  /** Products whose extra units the user confirmed. */
+  accepted: Set<number>;
+};
+
+export type StockSplit = {
+  product_id: number;
+  sellable: number;
+  /** Units reported expired/damaged/wrong item: left out of stock. */
+  excluded: number;
+  /** Units above the invoice the user has not confirmed: left out of stock. */
+  unconfirmed_excess: number;
+};
+
 /** Splits received goods into what enters stock (sellable) and what is left
- * out of stock (excluded), per product. */
+ * out of stock, per product. Units above the invoiced quantity only enter
+ * stock once the user confirms them (`excess`); without it no cap is applied. */
 export function stockSplit(
   scans: ScanIn[],
   issues: IssueIn[],
-): { product_id: number; sellable: number; excluded: number }[] {
+  excess?: ExcessRule,
+): StockSplit[] {
   const received = new Map<number, number>();
   for (const s of scans) {
     received.set(s.product_id, (received.get(s.product_id) ?? 0) + s.qty);
@@ -126,7 +144,10 @@ export function stockSplit(
   }
   return [...received].map(([product_id, got]) => {
     const excluded = Math.min(got, bad.get(product_id) ?? 0);
-    return { product_id, sellable: got - excluded, excluded };
+    const good = got - excluded;
+    const extra = excess ? Math.max(0, good - (excess.expected.get(product_id) ?? 0)) : 0;
+    const unconfirmed_excess = excess?.accepted.has(product_id) ? 0 : extra;
+    return { product_id, sellable: good - unconfirmed_excess, excluded, unconfirmed_excess };
   });
 }
 
@@ -138,6 +159,7 @@ export type ItemRow = {
   in_stock: number;
   not_counted: number;
   note?: string;
+  unmatched?: boolean;
 };
 
 /**
@@ -148,7 +170,7 @@ export type ItemRow = {
 export function buildItemRows(
   lines: LineIn[],
   scans: ScanIn[],
-  split: { product_id: number; sellable: number }[],
+  split: StockSplit[],
   products: Map<number, { name: string; unit: string }>,
 ): ItemRow[] {
   const expected = new Map<number, number>();
@@ -166,6 +188,7 @@ export function buildItemRows(
         received: 0,
         in_stock: 0,
         not_counted: 0,
+        unmatched: true,
         note: "not matched to a catalogue product",
       });
       continue;
@@ -179,6 +202,7 @@ export function buildItemRows(
     received.set(s.product_id, (received.get(s.product_id) ?? 0) + s.qty);
   }
   const stock = new Map(split.map((s) => [s.product_id, s.sellable]));
+  const unconfirmed = new Map(split.map((s) => [s.product_id, s.unconfirmed_excess]));
   const matched = order.map((id): ItemRow => {
     const got = received.get(id) ?? 0;
     const inStock = stock.get(id) ?? 0;
@@ -190,6 +214,9 @@ export function buildItemRows(
       received: got,
       in_stock: inStock,
       not_counted: got - inStock,
+      ...(unconfirmed.get(id)
+        ? { note: `${unconfirmed.get(id)} extra not added to stock until confirmed` }
+        : {}),
     };
   });
   return [...matched, ...rows];
@@ -199,9 +226,10 @@ export function formatItemRows(rows: ItemRow[]): string {
   return rows
     .map((r, n) => {
       const unit = r.unit ? ` ${r.unit}` : "";
-      const tail = r.note
+      const tail = r.unmatched
         ? `, ${r.note}`
-        : `, received ${r.received}, added to stock ${r.in_stock}, not counted ${r.not_counted}`;
+        : `, received ${r.received}, added to stock ${r.in_stock}, not counted ${r.not_counted}` +
+          (r.note ? ` (${r.note})` : "");
       return `${n + 1}. ${r.name}: expected ${r.expected}${unit}${tail}`;
     })
     .join("\n");

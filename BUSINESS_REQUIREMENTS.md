@@ -95,9 +95,7 @@ Confirmed by the product owner. All components use these; do not assume differen
 
 ## Implementation status of these decisions
 
-The current code and README still do the following, which differs from the decisions above. Change each across components together, updating `packages/shared` and the README API table in the same change:
-
-- There is no excess-goods confirmation step.
+Nothing is known to differ from the decisions above right now. If a component drifts, list it here and fix it across components together, updating `packages/shared` and the README API table in the same change.
 
 ## Integration priority
 
