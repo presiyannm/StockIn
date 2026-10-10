@@ -1,23 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
 
-export type Product = { id: number; name: string; barcode: string | null; aliases: string[] };
+import type {
+  DraftMessageRequest,
+  DraftMessageResponse,
+  ExtractedInvoice,
+  IdentifyResult,
+  Product,
+} from "@stockin/shared";
 
 export type ImageInput = { data: Buffer; contentType: string };
-
-export type ExtractedInvoice = {
-  supplier_name: string | null;
-  invoice_number: string | null;
-  invoice_date: string | null; // YYYY-MM-DD
-  language: "bg" | "en" | "other";
-  lines: {
-    raw_text: string;
-    qty: number;
-    unit_price: number | null;
-    product_id: number | null;
-    confidence: number;
-  }[];
-};
 
 export const aiEnabled = Boolean(config.anthropicKey);
 
@@ -151,8 +143,8 @@ export function extractInvoice(
 export async function identifyProduct(
   image: ImageInput,
   products: Product[],
-): Promise<{ product_id: number | null; confidence: number; reason: string }> {
-  return callJson({
+): Promise<IdentifyResult> {
+  return callJson<IdentifyResult>({
     system:
       "You identify a grocery product from a photo by matching it to the shop catalogue. " +
       "If it is not clearly one catalogue product, return null. Never guess.",
@@ -173,13 +165,10 @@ export async function identifyProduct(
   });
 }
 
-export async function draftSupplierMessage(input: {
-  language: "bg" | "en" | "other";
-  supplier: string;
-  invoiceNumber: string | null;
-  items: string[];
-}): Promise<{ message: string; requested_resolution: string }> {
-  return callJson({
+export async function draftSupplierMessage(
+  input: DraftMessageRequest,
+): Promise<DraftMessageResponse> {
+  return callJson<DraftMessageResponse>({
     system:
       "You write short, polite, factual messages from a small shop to a supplier about problems with a delivery. " +
       "Do not invent facts or quantities; use only the items given. No threats.",

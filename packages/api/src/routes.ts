@@ -1,13 +1,14 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { pool, query } from "./db.js";
+import type { Product } from "@stockin/shared";
 import {
-  aiEnabled,
+  AiServiceError,
+  aiAvailable,
   draftSupplierMessage,
   extractInvoice,
   identifyProduct,
   type ImageInput,
-  type Product,
-} from "./ai.js";
+} from "./aiClient.js";
 import { reconcile, stockSplit } from "./reconcile.js";
 import { downloadPhoto, photoUrl, uploadPhoto } from "./storage.js";
 import { renderReportHtml } from "./reportHtml.js";
@@ -42,9 +43,17 @@ async function getDelivery(id: number) {
 }
 
 export async function registerRoutes(app: FastifyInstance) {
+  app.setErrorHandler((err: Error, req, reply) => {
+    if (err instanceof AiServiceError) {
+      return reply.code(503).send({ error: err.message });
+    }
+    req.log.error(err);
+    return reply.code((err as any).statusCode ?? 500).send({ error: err.message });
+  });
+
   app.get("/api/health", async () => {
     const [row] = await query<{ ok: number }>("SELECT 1 AS ok");
-    return { ok: row.ok === 1, db: "connected", ai: aiEnabled };
+    return { ok: row.ok === 1, db: "connected", ai: await aiAvailable() };
   });
 
   app.get("/api/files/*", async (req, reply) => {
@@ -151,8 +160,9 @@ export async function registerRoutes(app: FastifyInstance) {
     }
     const { files } = await readMultipart(req);
     if (!files.length) return reply.code(400).send({ error: "No invoice photo uploaded" });
-    if (!aiEnabled) {
-      return reply.code(503).send({ error: "ANTHROPIC_API_KEY is not set, cannot read the invoice" });
+    // Check before storing anything, so a down ai-service leaves no half-saved invoice.
+    if (!(await aiAvailable())) {
+      return reply.code(503).send({ error: "The AI service is unavailable, cannot read the invoice" });
     }
 
     const keys = await Promise.all(
@@ -281,7 +291,6 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Photo of an item with no readable barcode: Claude matches it to the catalogue.
   app.post("/api/deliveries/:id/identify", async (req, reply) => {
-    if (!aiEnabled) return reply.code(503).send({ error: "ANTHROPIC_API_KEY is not set" });
     const { files } = await readMultipart(req);
     if (!files[0]) return reply.code(400).send({ error: "No photo uploaded" });
     const products = await allProducts();
@@ -418,19 +427,17 @@ export async function registerRoutes(app: FastifyInstance) {
     let message = "";
     let resolution = "Please issue a credit note or send a replacement for the items above.";
     if (items.length) {
-      if (aiEnabled) {
-        try {
-          const draft = await draftSupplierMessage({
-            language,
-            supplier: delivery.supplier_name ?? "Supplier",
-            invoiceNumber: delivery.invoice_number,
-            items,
-          });
-          message = draft.message;
-          resolution = draft.requested_resolution;
-        } catch (e) {
-          req.log.warn(e, "Claude draft failed, using template");
-        }
+      try {
+        const draft = await draftSupplierMessage({
+          language,
+          supplier: delivery.supplier_name ?? "Supplier",
+          invoiceNumber: delivery.invoice_number,
+          items,
+        });
+        message = draft.message;
+        resolution = draft.requested_resolution;
+      } catch (e) {
+        req.log.warn(e, "AI draft failed, using template");
       }
       if (!message) {
         message = `Hello, we received the delivery for invoice ${delivery.invoice_number ?? "n/a"} and found the problems listed below.`;

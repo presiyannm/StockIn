@@ -1,0 +1,21 @@
+{
+  "name": "stockin",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,ai -c blue,magenta \"npm run dev -w @stockin/api\" \"npm run dev -w @stockin/ai-service\"",
+    "db:up": "docker compose up -d",
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
