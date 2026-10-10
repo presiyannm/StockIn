@@ -1,17 +1,17 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { config } from "../config.js";
 import { requireClient } from "./client.js";
 import { strictSchema, type Schema } from "./schema.js";
 
 /** Asks for JSON matching the schema (structured outputs, no forced tool call). */
 export async function callJson<T>(opts: {
+  model: string;
   system: string;
   content: Anthropic.ContentBlockParam[];
   schema: Schema;
   maxTokens?: number;
 }): Promise<T> {
   const res = await requireClient().messages.create({
-    model: config.claudeModel,
+    model: opts.model,
     max_tokens: opts.maxTokens ?? 4096,
     system: opts.system,
     output_config: {

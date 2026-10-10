@@ -1,5 +1,6 @@
 import type { ExtractedInvoice, Product } from "@stockin/shared";
 import { callJson } from "../claude/callJson.js";
+import { config } from "../config.js";
 import { catalogueText, imageBlock, type ImageInput } from "../claude/content.js";
 
 export function extractInvoice(
@@ -7,6 +8,7 @@ export function extractInvoice(
   products: Product[],
 ): Promise<ExtractedInvoice> {
   return callJson<ExtractedInvoice>({
+    model: config.models.extractInvoice,
     system:
       "You read delivery invoices and delivery notes (Bulgarian or English, possibly photographed at an angle) for a small shop. " +
       "Extract every product line exactly as printed. Never invent lines. If a number is unreadable, lower the confidence instead of guessing. " +

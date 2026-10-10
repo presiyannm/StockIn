@@ -68,7 +68,8 @@ Env files are per service: `packages/api/.env` and `packages/ai-service/.env` (s
 - TypeScript ESM, Node 20+, Fastify, `pg` with plain SQL (no ORM), npm workspaces.
 - Postgres in Docker (host port 5433 to avoid clashing with a local Postgres on 5432).
 - Photos in Cloudflare R2 (S3 API); with empty `R2_*` vars the api falls back to local disk.
-- AI: Claude API via `@anthropic-ai/sdk`, model `claude-sonnet-5-5` (set by `CLAUDE_MODEL`).
+- AI: Claude API via `@anthropic-ai/sdk`, one model per capability: Opus 5.5 reads invoices,
+  Sonnet 5.5 identifies products, Haiku 5.5 drafts messages (see `packages/ai-service/AGENTS.md`).
 - UI language is English. Invoices may be Bulgarian or English and are read in either language.
   The supplier report is always English, whatever the invoice language.
 - No login. Single business.

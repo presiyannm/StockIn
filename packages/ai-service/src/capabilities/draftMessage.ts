@@ -1,10 +1,12 @@
 import type { DraftMessageRequest, DraftMessageResponse } from "@stockin/shared";
 import { callJson } from "../claude/callJson.js";
+import { config } from "../config.js";
 
 export async function draftSupplierMessage(
   input: DraftMessageRequest,
 ): Promise<DraftMessageResponse> {
   return callJson<DraftMessageResponse>({
+    model: config.models.draftMessage,
     system:
       "You write short, polite, factual messages from a small shop to a supplier about problems with a delivery. " +
       "Do not invent facts or quantities; use only the items given. No threats. " +

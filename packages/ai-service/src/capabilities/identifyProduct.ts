@@ -1,5 +1,6 @@
 import type { IdentifyResult, Product } from "@stockin/shared";
 import { callJson } from "../claude/callJson.js";
+import { config } from "../config.js";
 import { catalogueText, imageBlock, type ImageInput } from "../claude/content.js";
 
 export async function identifyProduct(
@@ -7,6 +8,7 @@ export async function identifyProduct(
   products: Product[],
 ): Promise<IdentifyResult> {
   return callJson<IdentifyResult>({
+    model: config.models.identifyProduct,
     system:
       "You identify a grocery product from a photo by matching it to the shop catalogue. " +
       "If it is not clearly one catalogue product, return null. Never guess.",
