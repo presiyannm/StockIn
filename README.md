@@ -62,6 +62,9 @@ npm run dev                                     # api on :3001, ai-service on :3
 | POST | `/api/deliveries/:id/finish` | (409 with `products` when expired/damaged/wrong-item quantities exceed what was received) Write stock, draft the supplier report (lists every delivery item plus problems), close (idempotent) |
 | GET | `/api/deliveries/:id/report.html` | Printable report for the supplier |
 | GET | `/api/files/*` | Serves stored photos when R2 is not configured |
+| GET | `/docs` | Swagger UI; the raw OpenAPI document is at `/docs/json` |
+
+The OpenAPI document is hand-written in `packages/api/src/openapi.ts`; update it together with this table.
 
 Issue types: `short`, `expired`, `damaged`, `wrong_item`, `other`.
 Finding types: `short`, `missing`, `extra`, `mismatch`.

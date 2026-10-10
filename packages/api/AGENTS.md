@@ -17,6 +17,7 @@ and the only one the web app talks to. Project-wide rules are in the root `AGENT
 |---|---|
 | `index.ts` | Builds the Fastify app, registers CORS, multipart and routes |
 | `routes.ts` | Every HTTP route and the shared error handler |
+| `openapi.ts` | Static OpenAPI document served as Swagger UI at `/docs` (routes have no Fastify schemas, so it is not generated) |
 | `reconcile.ts` | Pure functions: `reconcile` (invoice vs scans -> findings), `stockSplit` (sellable vs excluded) and `buildItemRows` (every delivery item for the report) |
 | `reconcile.test.ts` | Unit tests for the functions above |
 | `aiClient.ts` | The only code that calls `ai-service` (`extractInvoice`, `identifyProduct`, `draftSupplierMessage`, `aiAvailable`) |
@@ -61,7 +62,7 @@ This package must never hold the Anthropic key.
 ## Adding or changing a route
 
 1. Add it in `routes.ts` (use `query` for reads, a pooled client for multi-step writes).
-2. Update the API table in the root `README.md`; the web app relies on it.
+2. Update the API table in the root `README.md`; the web app relies on it. Update `openapi.ts` too.
 3. If it needs the DB shape to change, edit `db/schema.sql` and run `npm run db:reset`
    (this wipes data; say so), since the SQL only runs on a fresh volume.
 4. If it needs Claude, add the capability in `packages/ai-service` and the contract in
