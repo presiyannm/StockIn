@@ -55,6 +55,11 @@ export function captureFrame(video: HTMLVideoElement, maxW = 1400): string | nul
   return c.toDataURL("image/jpeg", 0.7);
 }
 
+/** Turns a captured data URL back into a Blob for multipart upload. */
+export async function dataUrlToBlob(url: string): Promise<Blob> {
+  return (await fetch(url)).blob();
+}
+
 export function readFiles(files: FileList | null, onEach: (dataUrl: string) => void) {
   if (!files) return;
   for (const file of Array.from(files)) {

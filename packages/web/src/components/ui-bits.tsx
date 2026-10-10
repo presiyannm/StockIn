@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Minus, Plus, X } from "lucide-react";
-import type { MatchStatus, IssueType } from "@/lib/api/types";
+import type { FindingType, IssueType } from "@/lib/api/types";
+
+export type MatchStatus = FindingType | "match";
 
 // ---- Status pill ----
 
@@ -9,6 +11,7 @@ const matchStyles: Record<MatchStatus, { label: string; className: string }> = {
   short: { label: "Short", className: "bg-warning/25 text-warning-foreground" },
   missing: { label: "Missing", className: "bg-destructive/15 text-destructive" },
   extra: { label: "Extra", className: "bg-info/15 text-info" },
+  mismatch: { label: "No match", className: "bg-destructive/15 text-destructive" },
 };
 
 export function MatchPill({ status }: { status: MatchStatus }) {

@@ -16,8 +16,7 @@ import { Route as ReceiveInvoiceRouteImport } from './routes/receive.invoice'
 import { Route as ReceiveReconcileRouteImport } from './routes/receive.reconcile'
 import { Route as ReceiveReportRouteImport } from './routes/receive.report'
 import { Route as ReceiveScanRouteImport } from './routes/receive.scan'
-import { Route as StockProductIdRouteImport } from './routes/stock_.$productId'
-import { Route as ReceiveIssueLineIdRouteImport } from './routes/receive.issue.$lineId'
+import { Route as ReceiveIssueProductIdRouteImport } from './routes/receive.issue.$productId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,14 +53,9 @@ const ReceiveScanRoute = ReceiveScanRouteImport.update({
   path: '/receive/scan',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StockProductIdRoute = StockProductIdRouteImport.update({
-  id: '/stock_/$productId',
-  path: '/stock/$productId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReceiveIssueLineIdRoute = ReceiveIssueLineIdRouteImport.update({
-  id: '/receive/issue/$lineId',
-  path: '/receive/issue/$lineId',
+const ReceiveIssueProductIdRoute = ReceiveIssueProductIdRouteImport.update({
+  id: '/receive/issue/$productId',
+  path: '/receive/issue/$productId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -73,8 +67,7 @@ export interface FileRoutesByFullPath {
   '/receive/reconcile': typeof ReceiveReconcileRoute
   '/receive/report': typeof ReceiveReportRoute
   '/receive/scan': typeof ReceiveScanRoute
-  '/stock/$productId': typeof StockProductIdRoute
-  '/receive/issue/$lineId': typeof ReceiveIssueLineIdRoute
+  '/receive/issue/$productId': typeof ReceiveIssueProductIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -84,8 +77,7 @@ export interface FileRoutesByTo {
   '/receive/reconcile': typeof ReceiveReconcileRoute
   '/receive/report': typeof ReceiveReportRoute
   '/receive/scan': typeof ReceiveScanRoute
-  '/stock/$productId': typeof StockProductIdRoute
-  '/receive/issue/$lineId': typeof ReceiveIssueLineIdRoute
+  '/receive/issue/$productId': typeof ReceiveIssueProductIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,8 +88,7 @@ export interface FileRoutesById {
   '/receive/reconcile': typeof ReceiveReconcileRoute
   '/receive/report': typeof ReceiveReportRoute
   '/receive/scan': typeof ReceiveScanRoute
-  '/stock_/$productId': typeof StockProductIdRoute
-  '/receive/issue/$lineId': typeof ReceiveIssueLineIdRoute
+  '/receive/issue/$productId': typeof ReceiveIssueProductIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -109,8 +100,7 @@ export interface FileRouteTypes {
     | '/receive/reconcile'
     | '/receive/report'
     | '/receive/scan'
-    | '/stock/$productId'
-    | '/receive/issue/$lineId'
+    | '/receive/issue/$productId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,8 +110,7 @@ export interface FileRouteTypes {
     | '/receive/reconcile'
     | '/receive/report'
     | '/receive/scan'
-    | '/stock/$productId'
-    | '/receive/issue/$lineId'
+    | '/receive/issue/$productId'
   id:
     | '__root__'
     | '/'
@@ -131,8 +120,7 @@ export interface FileRouteTypes {
     | '/receive/reconcile'
     | '/receive/report'
     | '/receive/scan'
-    | '/stock_/$productId'
-    | '/receive/issue/$lineId'
+    | '/receive/issue/$productId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -143,8 +131,7 @@ export interface RootRouteChildren {
   ReceiveReconcileRoute: typeof ReceiveReconcileRoute
   ReceiveReportRoute: typeof ReceiveReportRoute
   ReceiveScanRoute: typeof ReceiveScanRoute
-  StockProductIdRoute: typeof StockProductIdRoute
-  ReceiveIssueLineIdRoute: typeof ReceiveIssueLineIdRoute
+  ReceiveIssueProductIdRoute: typeof ReceiveIssueProductIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -198,18 +185,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReceiveScanRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/stock_/$productId': {
-      id: '/stock_/$productId'
-      path: '/stock/$productId'
-      fullPath: '/stock/$productId'
-      preLoaderRoute: typeof StockProductIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/receive/issue/$lineId': {
-      id: '/receive/issue/$lineId'
-      path: '/receive/issue/$lineId'
-      fullPath: '/receive/issue/$lineId'
-      preLoaderRoute: typeof ReceiveIssueLineIdRouteImport
+    '/receive/issue/$productId': {
+      id: '/receive/issue/$productId'
+      path: '/receive/issue/$productId'
+      fullPath: '/receive/issue/$productId'
+      preLoaderRoute: typeof ReceiveIssueProductIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -223,8 +203,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReceiveReconcileRoute: ReceiveReconcileRoute,
   ReceiveReportRoute: ReceiveReportRoute,
   ReceiveScanRoute: ReceiveScanRoute,
-  StockProductIdRoute: StockProductIdRoute,
-  ReceiveIssueLineIdRoute: ReceiveIssueLineIdRoute,
+  ReceiveIssueProductIdRoute: ReceiveIssueProductIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

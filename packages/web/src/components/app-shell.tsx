@@ -37,6 +37,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Full page for loading / not-found states of a delivery screen. */
+export function PageMessage({ title, text, onBack }: { title: string; text: string; onBack?: () => void }) {
+  return (
+    <AppShell>
+      <PageHeader title={title} {...(onBack ? { onBack } : {})} />
+      <p className="p-4 text-sm text-muted-foreground">{text}</p>
+    </AppShell>
+  );
+}
+
+/** Short label for a delivery in headers and lists. */
+export function deliveryLabel(d: { id: number; invoice_number: string | null }) {
+  return d.invoice_number ? `Invoice ${d.invoice_number}` : `Delivery #${d.id}`;
+}
+
 export function PageHeader({
   title,
   subtitle,

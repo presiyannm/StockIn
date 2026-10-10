@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowRight, Plus, Truck, ClipboardList, Camera, ScanBarcode, CheckCheck, Send } from "lucide-react";
-import { AppShell, PageHeader } from "@/components/app-shell";
+import { ArrowRight, Plus, Truck, ClipboardList, Camera, ScanBarcode, CheckCheck, FileCheck2 } from "lucide-react";
+import { AppShell, PageHeader, deliveryLabel } from "@/components/app-shell";
 import { Card, PrimaryButton, Sheet } from "@/components/ui-bits";
 import { SupplierPicker } from "@/components/supplier-picker";
-import { useAppState, createDelivery, getApiMode, setApiMode, getApiBase, setApiBase } from "@/lib/api/client";
+import { createDelivery } from "@/lib/api/client";
+import { useDeliveries, useDeliveryAction } from "@/lib/api/queries";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -24,68 +25,74 @@ const steps = [
   { icon: Camera, label: "Capture invoice" },
   { icon: ScanBarcode, label: "Scan items" },
   { icon: CheckCheck, label: "Reconcile" },
-  { icon: ClipboardList, label: "Log issues" },
-  { icon: Send, label: "Send report" },
+  { icon: ClipboardList, label: "Report issues" },
+  { icon: FileCheck2, label: "Confirm & print report" },
 ];
 
-const nextRoute: Record<string, string> = {
-  invoice: "/receive/invoice",
+const nextRoute = {
+  draft: "/receive/invoice",
   scanning: "/receive/scan",
-  reconciled: "/receive/report",
-};
+  reconciled: "/receive/reconcile",
+  closed: "/receive/report",
+} as const;
 
 function HomePage() {
-  const state = useAppState();
   const navigate = useNavigate();
+  const { data: deliveries, isPending, error } = useDeliveries();
   const [newOpen, setNewOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [supplier, setSupplier] = useState("");
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [supplierId, setSupplierId] = useState<number | null>(null);
+  const { run, busy } = useDeliveryAction(0);
 
-  const active = state.deliveries.find((d) => d.status !== "closed");
-  const mode = getApiMode();
+  const active = deliveries?.find((d) => d.status !== "closed");
 
   async function start() {
-    if (!supplier.trim()) return;
-    setBusy(true);
-    const d = await createDelivery({ supplierName: supplier.trim(), supplierEmail: email.trim() });
-    setBusy(false);
+    let id = 0;
+    const ok = await run(async () => {
+      id = (await createDelivery(supplierId)).id;
+    });
+    if (!ok) return;
     setNewOpen(false);
-    navigate({ to: "/receive/invoice", search: { delivery: d.id } });
+    navigate({ to: "/receive/invoice", search: { delivery: id } });
   }
 
   return (
     <AppShell>
-      <PageHeader
-        title="StockIn"
-        subtitle="Dock receiving"
-        right={
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="press rounded-full border border-border px-3 py-1.5 text-[11px] font-bold text-muted-foreground"
-          >
-            {mode === "mock" ? "Demo data" : "Live API"}
-          </button>
-        }
-      />
+      <PageHeader title="StockIn" subtitle="Dock receiving" />
 
       <div className="space-y-4 p-4">
-        {active ? (
+        {error && (
+          <Card className="border-destructive/40 bg-destructive/10">
+            <p className="text-sm font-bold text-destructive">Can't reach the StockIn API</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {error.message}. Is <span className="font-mono">npm run dev</span> running?
+            </p>
+          </Card>
+        )}
+        {isPending ? (
+          <Card>
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          </Card>
+        ) : active ? (
           <Card className="border-primary/30 bg-primary/5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Active delivery</p>
-                <p className="mt-1 text-lg font-bold">{active.reference}</p>
-                <p className="text-sm text-muted-foreground">{active.supplierName}</p>
+                <p className="mt-1 text-lg font-bold">{deliveryLabel(active)}</p>
+                <p className="text-sm text-muted-foreground">{active.supplier_name ?? "Supplier not known yet"}</p>
               </div>
               <Truck className="h-8 w-8 text-primary" />
             </div>
-            <div className="mt-4">
-              <PrimaryButton onClick={() => navigate({ to: nextRoute[active.status] ?? "/receive/invoice", search: { delivery: active.id } })}>
+            <div className="mt-4 space-y-2">
+              <PrimaryButton onClick={() => navigate({ to: nextRoute[active.status], search: { delivery: active.id } })}>
                 Resume receiving <ArrowRight className="h-4 w-4" />
               </PrimaryButton>
+              <button
+                type="button"
+                onClick={() => setNewOpen(true)}
+                className="press w-full py-2 text-xs font-bold text-muted-foreground"
+              >
+                Start another delivery
+              </button>
             </div>
           </Card>
         ) : (
@@ -100,7 +107,7 @@ function HomePage() {
               <Truck className="h-8 w-8 text-muted-foreground" />
             </div>
             <div className="mt-4">
-              <PrimaryButton onClick={() => setNewOpen(true)}>
+              <PrimaryButton onClick={() => setNewOpen(true)} disabled={!!error}>
                 <Plus className="h-4 w-4" /> New delivery
               </PrimaryButton>
             </div>
@@ -129,45 +136,10 @@ function HomePage() {
 
       <Sheet open={newOpen} onClose={() => setNewOpen(false)} title="New delivery">
         <div className="space-y-4">
-          <SupplierPicker state={state} name={supplier} email={email} onChange={(n, e) => { setSupplier(n); setEmail(e); }} />
-          <PrimaryButton onClick={start} disabled={!supplier.trim() || busy}>
+          <SupplierPicker value={supplierId} onChange={setSupplierId} />
+          <PrimaryButton onClick={start} disabled={busy}>
             {busy ? "Creating…" : "Start receiving"}
           </PrimaryButton>
-        </div>
-      </Sheet>
-
-      <Sheet open={settingsOpen} onClose={() => setSettingsOpen(false)} title="API connection">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            {(["mock", "live"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setApiMode(m)}
-                className={`press rounded-xl border py-3 text-sm font-bold ${
-                  mode === m
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-card text-muted-foreground"
-                }`}
-              >
-                {m === "mock" ? "Demo data" : "Live API"}
-              </button>
-            ))}
-          </div>
-          {mode === "live" && (
-            <label className="block">
-              <span className="text-xs font-bold text-muted-foreground">API base URL</span>
-              <input
-                defaultValue={getApiBase()}
-                onBlur={(e) => setApiBase(e.target.value)}
-                placeholder="http://localhost:3001"
-                className="mt-1 h-12 w-full rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
-            </label>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Demo data keeps everything on this device. Live API sends requests to your StockIn backend.
-          </p>
         </div>
       </Sheet>
     </AppShell>
