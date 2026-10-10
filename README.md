@@ -17,7 +17,7 @@ packages/
   api/          Fastify. Owns Postgres, photo storage (R2), reconciliation, stock rules, report page.
   ai-service/   Fastify, stateless. Owns the Anthropic key. Read invoice, identify product, draft message.
   shared/       TypeScript contracts between api and ai-service (types only).
-  web/          Phone app (owned by the frontend developer; talks only to the api).
+  web/          Phone app (React + TanStack Start). Talks only to the api, through the Vite /api proxy.
 db/             schema.sql, seed.sql (loaded automatically by docker compose on first start)
 samples/        Test invoice image
 ```
@@ -34,9 +34,11 @@ npm install
 npm run db:up                                   # Postgres on localhost:5433
 cp packages/api/.env.example packages/api/.env  # fill in R2 values (optional) and AI_SERVICE_TOKEN
 cp packages/ai-service/.env.example packages/ai-service/.env   # fill in ANTHROPIC_API_KEY, same AI_SERVICE_TOKEN
-npm run dev                                     # api on :3001, ai-service on :3002
+npm run dev                                     # api on :3001, ai-service on :3002, web on :5173
 ```
 
+- Open http://localhost:5173 (or `http://<your-PC-IP>:5173` on a phone on the same Wi-Fi). The
+  web app proxies `/api` to :3001, so it needs no config. `npm run dev:web` starts only the web app.
 - Leave the `R2_*` values empty to store photos in `packages/api/uploads/` instead of Cloudflare R2.
 - `npm run db:reset` wipes the database and reloads the schema and seed data.
 - `npm test` runs the reconciliation unit tests; `npm run typecheck` checks all packages.

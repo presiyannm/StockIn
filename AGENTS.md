@@ -34,7 +34,7 @@ packages/
   api/          Fastify :3001. Postgres, photo storage, reconciliation, stock rules, report page.
   ai-service/   Fastify :3002, stateless. The only place the Anthropic key lives.
   shared/       Types only: the contract between api and ai-service.
-  web/          Phone app (React). Talks only to `api`.
+  web/          Phone app (React + TanStack Start, Vite :5173). Talks only to `api` via the /api proxy.
 db/             schema.sql + seed.sql (docker compose loads them on first start only)
 samples/        bg-invoice.png: a Bulgarian test invoice for smoke tests
 ```
@@ -55,7 +55,8 @@ Boundaries:
 npm install
 npm run db:up        # Postgres 16 in Docker on localhost:5433
 npm run db:reset     # wipe + reload schema.sql and seed.sql
-npm run dev          # api + ai-service together
+npm run dev          # api + ai-service + web together (web on http://localhost:5173)
+npm run dev:web      # only the web app
 npm run typecheck    # all packages
 npm test             # unit tests (node:test via tsx)
 ```
