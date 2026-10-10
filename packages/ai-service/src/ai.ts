@@ -171,12 +171,13 @@ export async function draftSupplierMessage(
   return callJson<DraftMessageResponse>({
     system:
       "You write short, polite, factual messages from a small shop to a supplier about problems with a delivery. " +
-      "Do not invent facts or quantities; use only the items given. No threats.",
+      "Do not invent facts or quantities; use only the items given. No threats. " +
+      "Always write in English, even if item text or product names are Bulgarian; keep product names as given.",
     content: [
       {
         type: "text",
         text:
-          `Write the cover message in ${input.language === "bg" ? "Bulgarian" : "English"}.\n` +
+          "Write the cover message in English.\n" +
           `Supplier: ${input.supplier}\nInvoice: ${input.invoiceNumber ?? "n/a"}\nReported items:\n` +
           input.items.map((i) => `- ${i}`).join("\n") +
           `\n\nAlso state in one short sentence the requested resolution (credit note or replacement).`,

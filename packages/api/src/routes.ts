@@ -417,19 +417,11 @@ export async function registerRoutes(app: FastifyInstance) {
       }),
     ];
 
-    // Write to the supplier in the invoice language (Cyrillic invoice -> Bulgarian).
-    const [{ raw }] = await query<{ raw: string }>(
-      "SELECT COALESCE(string_agg(raw_text, ' '), '') AS raw FROM invoice_lines WHERE delivery_id = $1",
-      [id],
-    );
-    const language = /[Ѐ-ӿ]/.test(raw) ? "bg" : "en";
-
     let message = "";
     let resolution = "Please issue a credit note or send a replacement for the items above.";
     if (items.length) {
       try {
         const draft = await draftSupplierMessage({
-          language,
           supplier: delivery.supplier_name ?? "Supplier",
           invoiceNumber: delivery.invoice_number,
           items,
