@@ -4,6 +4,16 @@ Project-wide context for everyone working on this repo (people and AI tools). Ea
 has its own `AGENTS.md` with the rules for that package; when you work inside a package, read
 that file too. Where they differ, the package file wins for that package.
 
+## Shared business requirements
+
+Read [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md) for the agreed MVP workflow,
+business rules, acceptance examples and open product decisions. Its confirmed product
+decisions take precedence over older product descriptions here or in package guides:
+supplier reports must be **English** and include **all delivery items**, including correctly
+received ones. This supersedes the invoice-language report statement below. Existing
+technical settings and contributor instructions remain in effect. Requirements describe
+the target behavior, not a guarantee that every feature is already implemented.
+
 ## What this is
 
 AI-assisted goods receiving for small shops. A person at the door photographs the supplier

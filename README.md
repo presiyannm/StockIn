@@ -5,6 +5,11 @@ scans what arrives, and reports problems (short, expired, damaged...). The AI re
 invoice, reconciliation flags differences, and a printable report goes back to the supplier.
 Stock is updated with reported goods kept out of sellable stock.
 
+See [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md) for the agreed MVP behavior,
+acceptance examples and open decisions. Supplier reports must be English and include all
+delivery items. These requirements describe the target behavior; the API and stock rules
+below document the current implementation.
+
 ## Layout
 
 ```
