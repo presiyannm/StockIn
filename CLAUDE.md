@@ -12,5 +12,5 @@ over older product descriptions, including report language and coverage.
   when facts change, so the two never drift apart. Each package follows the same pattern: an
   `AGENTS.md` plus a `CLAUDE.md` that imports it.
 - Use plan mode for changes to the database schema, the HTTP API shape, or the stock rules.
-- Use the `claude-api` skill before touching `packages/ai-service/src/ai.ts`; model behaviour and
+- Use the `claude-api` skill before touching `packages/ai-service/src/claude/` or `capabilities/`; model behaviour and
   API parameters change between Claude models.
