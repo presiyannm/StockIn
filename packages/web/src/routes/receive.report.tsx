@@ -2,10 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CheckCircle2, PackageCheck, PackageX, Printer, Flag, AlertTriangle } from "lucide-react";
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
-import { ActionBar, Card, MatchPill, PrimaryButton, issueTypeLabels } from "@/components/ui-bits";
+import { ActionBar, Card, MatchPill, PrimaryButton, issueTypeLabels, type MatchStatus } from "@/components/ui-bits";
 import { ApiError, finishDelivery, reportUrl, setResolution } from "@/lib/api/client";
 import { useDelivery, useDeliveryAction } from "@/lib/api/queries";
-import type { OverReported, Resolution } from "@/lib/api/types";
+import type { OverReported } from "@/lib/api/types";
 import { productRows } from "@/lib/rows";
 
 export const Route = createFileRoute("/receive/report")({
@@ -23,12 +23,6 @@ export const Route = createFileRoute("/receive/report")({
   component: ReportPage,
 });
 
-const resolutions: { value: Resolution | null; label: string }[] = [
-  { value: null, label: "None" },
-  { value: "credit", label: "Credit note" },
-  { value: "replacement", label: "Replacement" },
-];
-
 function ReportPage() {
   const { delivery } = Route.useSearch();
   const navigate = useNavigate();
@@ -42,8 +36,7 @@ function ReportPage() {
   const d = data.delivery;
   const closed = d.status === "closed";
   const rows = productRows(data);
-  const findings = rows.filter((r) => r.finding && r.issues.length === 0);
-  const issues = rows.flatMap((r) => r.issues);
+  const allGood = rows.length > 0 && rows.every((r) => !r.finding && r.issues.length === 0);
   const toStock = data.items.reduce((a, i) => a + i.in_stock, 0);
   const notCounted = data.items.reduce((a, i) => a + i.not_counted, 0);
   const resolutionNote = note ?? d.resolution_note ?? "";
@@ -104,125 +97,97 @@ function ReportPage() {
           </div>
         </Card>
 
-        <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">All delivery items</p>
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-border text-[10px] uppercase text-muted-foreground">
-                <tr>
-                  <th className="p-2">Item</th>
-                  <th className="p-2 text-right">Inv.</th>
-                  <th className="p-2 text-right">Recv.</th>
-                  <th className="p-2 text-right">Stock</th>
-                  <th className="p-2 text-right">Not cnt.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((i, n) => (
-                  <tr key={n} className="border-b border-border last:border-0">
-                    <td className="p-2">
-                      <p className="font-bold">{i.name}</p>
-                      {i.note && <p className="text-[10px] text-muted-foreground">{i.note}</p>}
-                    </td>
-                    <td className="p-2 text-right font-mono">{i.expected}</td>
-                    <td className="p-2 text-right font-mono">{i.unmatched ? "—" : i.received}</td>
-                    <td className="p-2 text-right font-mono font-bold text-success">{i.unmatched ? "—" : i.in_stock}</td>
-                    <td className="p-2 text-right font-mono">{i.unmatched ? "—" : i.not_counted}</td>
-                  </tr>
-                ))}
-                {data.items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-3 text-center text-muted-foreground">
-                      No items yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {allGood && (
+          <Card className="flex items-center gap-3 border-success/40 bg-success/10">
+            <CheckCircle2 className="h-5 w-5 text-success" />
+            <p className="text-sm font-bold text-success">Everything matched the invoice and nothing was reported</p>
           </Card>
-        </div>
+        )}
 
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Problems</p>
-          {issues.length === 0 && findings.length === 0 ? (
-            <Card className="flex items-center gap-3 border-success/40 bg-success/10">
-              <CheckCircle2 className="h-5 w-5 text-success" />
-              <p className="text-sm font-bold text-success">Everything matched the invoice and nothing was reported</p>
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {issues.map((i) => (
-                <button key={i.id} type="button" onClick={() => editIssue(i.product_id)} className="press block w-full text-left">
-                  <Card className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold">{i.product_name}</p>
-                        <p className="text-[11px] text-muted-foreground">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            All delivery items ({rows.length})
+          </p>
+          <div className="space-y-2">
+            {rows.map((r) => {
+              const item = r.product_id != null ? data.items.find((i) => i.product_id === r.product_id) : undefined;
+              const status = (r.finding?.type ?? "match") as MatchStatus;
+              return (
+                <Card key={r.key} className={`p-3 ${status === "match" && r.issues.length === 0 ? "" : "border-destructive/30"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold leading-snug">{r.name}</p>
+                      {r.product_id == null ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Invoiced {r.expected} · not linked to a product
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Invoiced {r.expected} · Received {r.received} ·{" "}
+                          <b className="text-success">{item?.in_stock ?? 0} into stock</b>
+                          {item && item.not_counted > 0 && (
+                            <b className="text-warning-foreground"> · {item.not_counted} not counted</b>
+                          )}
+                        </p>
+                      )}
+                      {item?.note && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.note}</p>}
+                    </div>
+                    <MatchPill status={status} />
+                  </div>
+
+                  {r.issues.map((i) => (
+                    <button
+                      key={i.id}
+                      type="button"
+                      onClick={() => editIssue(i.product_id)}
+                      className="press mt-2 flex w-full items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-left"
+                    >
+                      <div className="min-w-0 flex-1 text-xs">
+                        <p className="font-bold text-destructive">
                           {issueTypeLabels[i.type]} · {i.qty} unit{i.qty === 1 ? "" : "s"}
                           {i.expiry_date ? ` · expiry ${i.expiry_date}` : ""}
                         </p>
-                        {i.note && <p className="mt-1 text-xs text-foreground">“{i.note}”</p>}
+                        {i.note && <p className="mt-0.5 text-foreground">“{i.note}”</p>}
                       </div>
                       {i.photos.slice(0, 3).map((p) => (
                         <img key={p.id} src={p.url} alt="Evidence" className="h-9 w-9 rounded-lg border-2 border-card object-cover" />
                       ))}
-                    </div>
-                  </Card>
-                </button>
-              ))}
-              {findings.map((r) => (
-                <Card key={r.key} className="flex items-center gap-3 p-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{r.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{r.finding?.detail}</p>
-                  </div>
-                  {r.finding && <MatchPill status={r.finding.type} />}
+                    </button>
+                  ))}
+
                   {r.product_id != null && !closed && (
                     <button
                       type="button"
                       onClick={() => editIssue(r.product_id!)}
-                      className="press flex items-center gap-1 rounded-lg bg-destructive/10 px-2.5 py-2 text-[11px] font-bold text-destructive"
+                      className="press mt-2 flex items-center gap-1 rounded-lg bg-secondary px-2.5 py-1.5 text-[11px] font-bold"
                     >
-                      <Flag className="h-3.5 w-3.5" /> Report
+                      <Flag className="h-3.5 w-3.5" /> Report a problem
                     </button>
                   )}
                 </Card>
-              ))}
-            </div>
-          )}
+              );
+            })}
+            {rows.length === 0 && <p className="py-6 text-center text-xs text-muted-foreground">No items yet.</p>}
+          </div>
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Requested resolution</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Requested resolution {closed ? "" : "(optional)"}
+          </p>
           {closed ? (
-            <Card className="p-3 text-sm">{data.report?.requested_resolution ?? "None requested"}</Card>
+            <Card className="whitespace-pre-wrap p-3 text-sm">{data.report?.requested_resolution ?? "None"}</Card>
           ) : (
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
-                {resolutions.map((r) => (
-                  <button
-                    key={r.label}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => run(() => setResolution(d.id, r.value, resolutionNote))}
-                    className={`press rounded-xl border py-3 text-xs font-bold ${
-                      d.requested_resolution === r.value ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-              {d.requested_resolution && (
-                <input
-                  value={resolutionNote}
-                  onChange={(e) => setNote(e.target.value)}
-                  onBlur={() => run(() => setResolution(d.id, d.requested_resolution, resolutionNote))}
-                  placeholder="Optional note, e.g. credit for the 3 expired units"
-                  className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              )}
-            </div>
+            <textarea
+              value={resolutionNote}
+              onChange={(e) => setNote(e.target.value)}
+              onBlur={() => {
+                if (resolutionNote.trim() !== (d.resolution_note ?? "")) run(() => setResolution(d.id, resolutionNote));
+              }}
+              rows={3}
+              placeholder="e.g. Credit for the 3 expired units"
+              className="w-full rounded-xl border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
           )}
         </div>
 

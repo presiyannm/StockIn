@@ -4,7 +4,7 @@ import { CheckCheck, ScanBarcode, Pause, Play, Camera, Sparkles } from "lucide-r
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
 import { ActionBar, Card, PrimaryButton, QtyStepper, QuickAdds, Sheet } from "@/components/ui-bits";
 import { ProductPicker } from "@/components/product-picker";
-import { ApiError, identifyProduct, scanBarcode, scanProduct, setReceivedQty } from "@/lib/api/client";
+import { ApiError, identifyProduct, scanBarcode, scanProduct, setProductBarcode, setReceivedQty } from "@/lib/api/client";
 import { useDelivery, useDeliveryAction, useProducts } from "@/lib/api/queries";
 import type { IdentifyResult, Product } from "@/lib/api/types";
 import { productRows, type ProductRow } from "@/lib/rows";
@@ -354,7 +354,17 @@ function ScanPage() {
             <ProductPicker
               barcode={unknown}
               onPick={async (p) => {
+                const code = unknown;
                 setUnknown(null);
+                // A product without a barcode (e.g. added from the invoice) gets this one,
+                // so the next scan finds it directly.
+                if (p.barcode == null) {
+                  try {
+                    await setProductBarcode(p.id, code);
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }
                 await countProduct(p, "manual");
               }}
             />

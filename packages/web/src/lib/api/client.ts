@@ -9,7 +9,6 @@ import type {
   IssueType,
   Product,
   Report,
-  Resolution,
   StockRow,
   Supplier,
 } from "./types";
@@ -55,6 +54,10 @@ export const listStock = () => request<StockRow[]>("/api/stock");
 export const createProduct = (input: { name: string; barcode?: string | null; unit?: string }) =>
   request<Product>("/api/products", json("POST", input));
 
+/** Gives a product without a barcode (e.g. one added from an invoice line) its barcode. */
+export const setProductBarcode = (productId: number, barcode: string) =>
+  request<Product>(`/api/products/${productId}`, json("PATCH", { barcode }));
+
 // ---- Deliveries ----
 
 export const listDeliveries = () => request<DeliverySummary[]>("/api/deliveries");
@@ -63,11 +66,9 @@ export const getDelivery = (id: number) => request<DeliveryDetail>(`/api/deliver
 export const createDelivery = (supplierId: number | null) =>
   request<Delivery>("/api/deliveries", json("POST", { supplier_id: supplierId }));
 
-export const setResolution = (id: number, resolution: Resolution | null, note: string) =>
-  request<Delivery>(
-    `/api/deliveries/${id}`,
-    json("PATCH", { requested_resolution: resolution, resolution_note: note || null }),
-  );
+/** The requested resolution: optional free text for the whole delivery. */
+export const setResolution = (id: number, note: string) =>
+  request<Delivery>(`/api/deliveries/${id}`, json("PATCH", { resolution_note: note.trim() || null }));
 
 export const setExcessAccepted = (id: number, productId: number, accept: boolean) =>
   request<{ ok: boolean }>(`/api/deliveries/${id}/excess/${productId}`, json("PUT", { accept }));
@@ -78,7 +79,7 @@ export const setExcessAccepted = (id: number, productId: number, accept: boolean
 export function uploadInvoice(id: number, pages: Blob[]) {
   const form = new FormData();
   pages.forEach((p, i) => form.append("photo", p, `page-${i + 1}.jpg`));
-  return request<{ language: string; lines: number }>(`/api/deliveries/${id}/invoice`, {
+  return request<{ language: string; lines: number; new_products: number }>(`/api/deliveries/${id}/invoice`, {
     method: "POST",
     body: form,
   });

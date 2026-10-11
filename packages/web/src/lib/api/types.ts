@@ -7,8 +7,6 @@ export type IssueType = "short" | "expired" | "damaged" | "wrong_item" | "other"
 
 export type FindingType = "short" | "missing" | "extra" | "mismatch";
 
-export type Resolution = "credit" | "replacement";
-
 export interface Product {
   id: number;
   name: string;
@@ -45,7 +43,6 @@ export interface DeliverySummary {
 export interface Delivery extends DeliverySummary {
   supplier_id: number | null;
   supplier_email: string | null;
-  requested_resolution: Resolution | null;
   resolution_note: string | null;
   closed_at: string | null;
 }
@@ -105,6 +102,8 @@ export interface Issue {
 
 /** One delivery item as finish writes it to stock and the report. */
 export interface ItemRow {
+  /** Null for an invoice line not linked to a catalogue product. */
+  product_id: number | null;
   name: string;
   unit: string;
   expected: number;

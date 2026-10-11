@@ -58,11 +58,11 @@ function ReconcilePage() {
       />
 
       <div className="space-y-4 p-4 pb-40">
-        <div className="grid grid-cols-4 gap-2">
-          {(["match", "short", "missing", "extra"] as const).map((s) => (
-            <Card key={s} className="flex flex-col items-center gap-1 p-2.5">
+        <div className="grid grid-cols-5 gap-1.5">
+          {(["match", "short", "missing", "extra", "mismatch"] as const).map((s) => (
+            <Card key={s} className="flex flex-col items-center gap-1 px-1 py-2.5">
               <span className="font-mono text-xl font-bold">{counts[s] ?? 0}</span>
-              <MatchPill status={s} />
+              <MatchPill status={s} compact />
             </Card>
           ))}
         </div>
@@ -124,7 +124,9 @@ function ReconcilePage() {
                       onChange={(e) => run(() => setExcessAccepted(d.id, r.product_id!, e.target.checked))}
                       className="h-4 w-4"
                     />
-                    Add the {extra} extra to stock (we keep them)
+                    {r.expected === 0
+                      ? `Not on the invoice: add the ${extra} to stock (we keep them)`
+                      : `Add the ${extra} extra to stock (we keep them)`}
                   </label>
                 )}
               </Card>

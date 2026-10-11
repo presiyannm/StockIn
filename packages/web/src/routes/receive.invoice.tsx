@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { Camera, FileText, Plus, Sparkles, Trash2, ImagePlus, Link2 } from "lucide-react";
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
 import { ActionBar, Card, PrimaryButton, QtyStepper, Sheet } from "@/components/ui-bits";
@@ -65,8 +66,12 @@ function InvoicePage() {
       return;
     }
     const blobs = await Promise.all(pages.map(dataUrlToBlob));
-    const ok = await run(() => uploadInvoice(d.id, blobs));
+    let added = 0;
+    const ok = await run(async () => {
+      added = (await uploadInvoice(d.id, blobs)).new_products;
+    });
     if (ok) {
+      if (added > 0) toast.success(`Added ${added} new product${added === 1 ? "" : "s"} from the invoice to the catalogue`);
       setPages([]);
       setAddingPages(false);
     }

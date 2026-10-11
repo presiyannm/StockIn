@@ -14,10 +14,11 @@ const matchStyles: Record<MatchStatus, { label: string; className: string }> = {
   mismatch: { label: "No match", className: "bg-destructive/15 text-destructive" },
 };
 
-export function MatchPill({ status }: { status: MatchStatus }) {
+export function MatchPill({ status, compact = false }: { status: MatchStatus; compact?: boolean }) {
   const s = matchStyles[status];
+  const size = compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]";
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${s.className}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full py-0.5 font-bold ${size} ${s.className}`}>
       {s.label}
     </span>
   );
