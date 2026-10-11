@@ -86,11 +86,13 @@ Automatic counting from photos, voice input, automatic supplier emails, payments
 Confirmed by the product owner. All components use these; do not assume differently.
 
 - **Languages:** the interface is English. Invoices may be Bulgarian or English and the AI reads both. The supplier report is always English.
-- **Excess goods:** extra units are shown as an `extra` finding. They enter sellable stock only after the user explicitly confirms them at the confirmation step.
+- **Excess goods:** extra units of an invoiced product are shown as an `extra` finding. They enter sellable stock only after the user explicitly confirms them at the confirmation step.
 - **Stock:** no quarantine bucket. Received goods are either sellable (added to stock) or unsuitable (expired, damaged, wrong item: not counted, recorded only in the report).
 - **`other` issues:** informational; they never affect stock.
 - **Pack-to-unit conversion:** not supported in the MVP. Only like units are compared; a unit mismatch is flagged for human review.
-- **Requested resolution** (credit or replacement): recorded once per delivery, as a choice plus an optional note.
+- **Requested resolution:** optional free text, recorded once per delivery (for example "Credit for the 3 expired units").
+- **Catalogue from the invoice:** when the AI reads the invoice, an unknown supplier is added to the suppliers, and invoice products the catalogue does not know are added as products so later scans count against them. The user can still re-link any line to a different product.
+- **Missing vs no match:** an invoiced item that never turns up in scans or photos is **missing**. Goods received that are not on the invoice at all (the invoice says "dog food", "cat food" arrived) are a **no match** finding. Like extra units, they enter stock only after the user explicitly confirms them.
 - **Report narrative:** not editable before printing. It is generated from saved records, so the printed report cannot drift from them.
 
 ## Implementation status of these decisions

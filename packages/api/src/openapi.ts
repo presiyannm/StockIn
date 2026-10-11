@@ -93,6 +93,27 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/products/{id}": {
+      patch: {
+        tags: ["Catalogue"],
+        summary: "Give a product without a barcode its barcode (e.g. one added from an invoice line)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { type: "object", required: ["barcode"], properties: { barcode: { type: "string" } } },
+            },
+          },
+        },
+        responses: {
+          200: json(ref("Product")),
+          400: err("barcode is required, or the product already has another barcode"),
+          404: err("Product not found"),
+          409: err("Barcode already belongs to another product"),
+        },
+      },
+    },
     "/api/stock": {
       get: {
         tags: ["Catalogue"],
@@ -136,7 +157,7 @@ export const openApiDocument = {
       patch: {
         tags: ["Delivery"],
         summary: "Set the requested resolution for the whole delivery",
-        description: "Recorded once per delivery, as a choice plus an optional note. Copied to the report by finish.",
+        description: "Optional free text, recorded once per delivery. Copied to the report by finish.",
         parameters: [deliveryId],
         requestBody: {
           required: true,
@@ -145,7 +166,6 @@ export const openApiDocument = {
               schema: {
                 type: "object",
                 properties: {
-                  requested_resolution: { type: "string", enum: ["credit", "replacement"], nullable: true },
                   resolution_note: { type: "string", nullable: true },
                 },
               },
@@ -154,7 +174,6 @@ export const openApiDocument = {
         },
         responses: {
           200: json(ref("Delivery")),
-          400: err("Invalid requested_resolution"),
           404: err("Delivery not found"),
           409: err("Delivery is already closed"),
         },
@@ -185,7 +204,10 @@ export const openApiDocument = {
       post: {
         tags: ["Receiving"],
         summary: "Upload invoice photo(s); the AI reads all pages into invoice lines",
-        description: "Re-reads the whole invoice when a page is added. Returns 503 if the AI service is down; nothing is stored then.",
+        description:
+          "Re-reads the whole invoice when a page is added. The supplier is reused by exact name or created. " +
+          "Lines the AI could not match get a catalogue product (reused by exact name/alias, else created). " +
+          "Returns 503 if the AI service is down; nothing is stored then.",
         parameters: [deliveryId],
         requestBody: {
           required: true,
@@ -198,7 +220,7 @@ export const openApiDocument = {
         responses: {
           200: json({
             type: "object",
-            properties: { language: { type: "string", enum: ["bg", "en", "other"] }, lines: { type: "integer" } },
+            properties: { language: { type: "string", enum: ["bg", "en", "other"] }, lines: { type: "integer" }, new_products: { type: "integer" } },
           }),
           400: err("No invoice photo uploaded"),
           404: err("Delivery not found"),
@@ -436,6 +458,7 @@ export const openApiDocument = {
         type: "object",
         description: "One delivery item as finish would write it to stock and the report",
         properties: {
+          product_id: { type: "integer", nullable: true, description: "Null for an unmatched invoice line" },
           name: { type: "string" },
           unit: { type: "string" },
           expected: { type: "number" },
@@ -463,7 +486,6 @@ export const openApiDocument = {
           invoice_number: { type: "string", nullable: true },
           invoice_date: { type: "string", format: "date", nullable: true },
           status: { type: "string", enum: ["draft", "scanning", "reconciled", "closed"] },
-          requested_resolution: { type: "string", enum: ["credit", "replacement"], nullable: true },
           resolution_note: { type: "string", nullable: true },
           created_at: { type: "string", format: "date-time" },
           closed_at: { type: "string", format: "date-time", nullable: true },

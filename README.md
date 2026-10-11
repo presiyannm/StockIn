@@ -50,12 +50,13 @@ npm run dev                                     # api on :3001, ai-service on :3
 | GET | `/api/health` | DB and ai-service status |
 | GET | `/api/products`, `/api/suppliers` | Catalogue |
 | POST | `/api/products` | `{name, barcode?, unit?}`: add a product the catalogue does not know (409 if the barcode is taken) |
+| PATCH | `/api/products/:id` | `{barcode}`: give a product without a barcode its barcode, e.g. one added from an invoice (409 if the barcode is taken, 400 if the product already has another) |
 | GET | `/api/stock` | Current stock per product (sum of stock movements) |
 | GET/POST | `/api/deliveries` | List / start a delivery |
-| PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery: `{requested_resolution: "credit" \| "replacement" \| null, resolution_note}` (409 once closed) |
+| PATCH | `/api/deliveries/:id` | Requested resolution for the whole delivery, optional free text: `{resolution_note}` (409 once closed) |
 | PUT | `/api/deliveries/:id/excess/:productId` | `{accept: boolean}`: confirm that units above the invoice may enter stock (409 once closed) |
-| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, `items` (preview of what finish writes to stock), report |
-| POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines |
+| GET | `/api/deliveries/:id` | Everything for the screens: lines, scans, findings, issues (with photo URLs), `excess_accepted` product ids, `items` (preview of what finish writes to stock, one per item with `product_id`), report |
+| POST | `/api/deliveries/:id/invoice` | Upload invoice photo(s) (multipart `photo`); AI reads them into lines. The supplier is reused by exact name or created; lines the AI could not match get a catalogue product (reused by exact name/alias, else created). Returns `{language, lines, new_products}` |
 | PATCH | `/api/invoice-lines/:id` | Fix a line (`qty`, `product_id`) |
 | POST | `/api/deliveries/:id/invoice-lines` | `{product_id, qty}`: add a line the AI missed (409 once closed) |
 | DELETE | `/api/invoice-lines/:id` | Remove a misread line (409 once closed) |
@@ -73,7 +74,7 @@ npm run dev                                     # api on :3001, ai-service on :3
 The OpenAPI document is hand-written in `packages/api/src/openapi.ts`; update it together with this table.
 
 Issue types: `short`, `expired`, `damaged`, `wrong_item`, `other`.
-Finding types: `short`, `missing`, `extra`, `mismatch`.
+Finding types: `short`, `missing` (invoiced, none received), `extra` (more than invoiced), `mismatch` ("No match": an invoice line with no product, or a scanned product that is not on the invoice at all).
 
 ## Stock rules
 
