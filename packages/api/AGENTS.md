@@ -50,10 +50,16 @@ This package must never hold the Anthropic key.
   The interface is English too. Invoice `language` is still extracted but does not affect the report.
 - **No double counting:** issues have no per-unit identity, so `finish` returns 409 (`overReportedProducts`)
   when expired/damaged/wrong-item quantities for a product exceed what was received. Do not clamp silently.
-- **Requested resolution** is set by the user once per delivery (`PATCH /api/deliveries/:id`) and
-  copied to the report by `finish`. The AI never writes or suggests one.
-- **Findings come only from `reconcile`.** Invoice lines the AI could not match to a product
-  become `mismatch` findings for a human; never guess a match here.
+- **Requested resolution** is optional free text the user sets once per delivery
+  (`PATCH /api/deliveries/:id`, `resolution_note`) and `finish` copies it to the report. The AI
+  never writes or suggests one. The old `deliveries.requested_resolution` column is no longer used.
+- **Findings come only from `reconcile`.** An invoiced product with nothing received is `missing`.
+  A scanned product that is not on the invoice at all, and any invoice line without a product, is
+  `mismatch` ("No match") for a human. Never guess a match here.
+- **Catalogue from the invoice:** the invoice route reuses a supplier on an exact
+  (case-insensitive) name match, or creates one. It links each line the AI left unmatched to a
+  product with exactly that name or alias, or creates one (no barcode). The user can re-link
+  it, and `PATCH /api/products/:id` attaches the barcode on the first scan.
 - **Issues:** any product can be reported, including ones that matched perfectly. Types:
   `short`, `expired`, `damaged`, `wrong_item`, `other`.
 - Multipart routes read files with `readMultipart` in `routes.ts`; photo fields are named

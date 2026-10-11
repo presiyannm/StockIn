@@ -42,6 +42,44 @@ async function getDelivery(id: number) {
   return delivery as Record<string, any> | undefined;
 }
 
+/** What `finish` would write to stock, per product, plus one row per delivery item.
+ * Shared by the delivery preview and `finish` so the two cannot drift apart. */
+async function stockPlan(id: number) {
+  const scans = await query<{ product_id: number; qty: number }>(
+    "SELECT product_id, qty::float AS qty FROM scans WHERE delivery_id = $1",
+    [id],
+  );
+  const issues = await query(
+    `SELECT i.*, p.name AS product_name, i.qty::float AS qty FROM issues i
+       JOIN products p ON p.id = i.product_id WHERE i.delivery_id = $1 ORDER BY i.id`,
+    [id],
+  );
+  const lineRows = await query<{ id: number; product_id: number | null; raw_text: string; qty: number }>(
+    "SELECT id, product_id, raw_text, qty::float AS qty FROM invoice_lines WHERE delivery_id = $1 ORDER BY id",
+    [id],
+  );
+  const expected = new Map<number, number>();
+  for (const l of lineRows) {
+    if (l.product_id != null) expected.set(l.product_id, (expected.get(l.product_id) ?? 0) + l.qty);
+  }
+  const accepted = new Set(
+    (
+      await query<{ product_id: number }>(
+        "SELECT product_id FROM excess_acceptances WHERE delivery_id = $1",
+        [id],
+      )
+    ).map((r) => r.product_id),
+  );
+  const split = stockSplit(scans, issues as any, { expected, accepted });
+  const productInfo = new Map(
+    (await query<{ id: number; name: string; unit: string }>("SELECT id, name, unit FROM products")).map(
+      (p) => [p.id, { name: p.name, unit: p.unit }],
+    ),
+  );
+  const items = buildItemRows(lineRows, scans, split, productInfo);
+  return { scans, issues, split, items };
+}
+
 export async function registerRoutes(app: FastifyInstance) {
   app.setErrorHandler((err: Error, req, reply) => {
     if (err instanceof AiServiceError) {
@@ -66,8 +104,63 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get("/api/products", () => allProducts());
+  app.get("/api/products", () =>
+    query("SELECT id, name, barcode, unit, aliases FROM products ORDER BY name"),
+  );
   app.get("/api/suppliers", () => query("SELECT * FROM suppliers ORDER BY name"));
+
+  // A product the catalogue does not know yet (e.g. an unknown barcode at the door).
+  app.post("/api/products", async (req, reply) => {
+    const b = (req.body ?? {}) as { name?: string; barcode?: string | null; unit?: string };
+    const name = b.name?.trim();
+    if (!name) return reply.code(400).send({ error: "name is required" });
+    const barcode = b.barcode?.trim() || null;
+    if (barcode) {
+      const [taken] = await query<{ name: string }>("SELECT name FROM products WHERE barcode = $1", [barcode]);
+      if (taken) {
+        return reply.code(409).send({ error: `Barcode ${barcode} already belongs to "${taken.name}"` });
+      }
+    }
+    const [row] = await query(
+      "INSERT INTO products (barcode, name, unit) VALUES ($1, $2, $3) RETURNING id, name, barcode, unit, aliases",
+      [barcode, name, b.unit?.trim() || "pcs"],
+    );
+    return row;
+  });
+
+  // Attach a barcode to a product that has none yet (e.g. one added from an invoice line),
+  // so the next scan of that code finds it directly.
+  app.patch("/api/products/:id", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const barcode = ((req.body ?? {}) as { barcode?: string }).barcode?.trim();
+    if (!barcode) return reply.code(400).send({ error: "barcode is required" });
+    const [product] = await query<{ barcode: string | null }>("SELECT barcode FROM products WHERE id = $1", [id]);
+    if (!product) return reply.code(404).send({ error: "Product not found" });
+    if (product.barcode && product.barcode !== barcode) {
+      return reply.code(400).send({ error: `Product already has barcode ${product.barcode}` });
+    }
+    const [taken] = await query<{ name: string }>("SELECT name FROM products WHERE barcode = $1 AND id <> $2", [
+      barcode,
+      id,
+    ]);
+    if (taken) return reply.code(409).send({ error: `Barcode ${barcode} already belongs to "${taken.name}"` });
+    const [row] = await query(
+      "UPDATE products SET barcode = $2 WHERE id = $1 RETURNING id, name, barcode, unit, aliases",
+      [id, barcode],
+    );
+    return row;
+  });
+
+  // Current stock per product: the sum of what finished deliveries wrote.
+  app.get("/api/stock", () =>
+    query(
+      `SELECT p.id, p.name, p.barcode, p.unit,
+              COALESCE(SUM(m.qty), 0)::float AS in_stock,
+              MAX(m.created_at) AS last_received
+         FROM products p LEFT JOIN stock_movements m ON m.product_id = p.id
+        GROUP BY p.id ORDER BY p.name`,
+    ),
+  );
 
   app.get("/api/deliveries", () =>
     query(
@@ -87,21 +180,18 @@ export async function registerRoutes(app: FastifyInstance) {
     return row;
   });
 
-  // The user's requested resolution for the whole delivery (credit or replacement).
+  // The user's requested resolution for the whole delivery: optional free text.
   app.patch("/api/deliveries/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
-    const b = (req.body ?? {}) as { requested_resolution?: string | null; resolution_note?: string | null };
-    if (b.requested_resolution != null && !["credit", "replacement"].includes(b.requested_resolution)) {
-      return reply.code(400).send({ error: "requested_resolution must be credit, replacement or null" });
-    }
+    const b = (req.body ?? {}) as { resolution_note?: string | null };
     const delivery = await getDelivery(id);
     if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
     if (delivery.status === "closed") {
       return reply.code(409).send({ error: "Delivery is already closed" });
     }
     const [row] = await query(
-      "UPDATE deliveries SET requested_resolution = $2, resolution_note = $3 WHERE id = $1 RETURNING *",
-      [id, b.requested_resolution ?? null, b.resolution_note || null],
+      "UPDATE deliveries SET requested_resolution = NULL, resolution_note = $2 WHERE id = $1 RETURNING *",
+      [id, b.resolution_note?.trim() || null],
     );
     return row;
   });
@@ -141,7 +231,8 @@ export async function registerRoutes(app: FastifyInstance) {
       [id],
     );
     const lines = await query(
-      `SELECT l.*, p.name AS product_name,
+      `SELECT l.*, l.qty::float AS qty, l.unit_price::float AS unit_price,
+              l.confidence::float AS confidence, p.name AS product_name, p.unit AS unit,
               COALESCE((SELECT SUM(qty) FROM scans s
                          WHERE s.delivery_id = l.delivery_id
                            AND s.product_id = l.product_id), 0)::float AS received_qty
@@ -156,11 +247,12 @@ export async function registerRoutes(app: FastifyInstance) {
       [id],
     );
     const findings = await query(
-      "SELECT * FROM findings WHERE delivery_id = $1 ORDER BY id",
+      `SELECT *, expected_qty::float AS expected_qty, received_qty::float AS received_qty
+         FROM findings WHERE delivery_id = $1 ORDER BY id`,
       [id],
     );
     const issues = await query(
-      `SELECT i.*, p.name AS product_name FROM issues i
+      `SELECT i.*, i.qty::float AS qty, p.name AS product_name FROM issues i
          JOIN products p ON p.id = i.product_id
         WHERE i.delivery_id = $1 ORDER BY i.id`,
       [id],
@@ -198,6 +290,8 @@ export async function registerRoutes(app: FastifyInstance) {
         photos: photoList.filter((p) => p.issue_id === i.id),
       })),
       excess_accepted: excessAccepted,
+      // Preview of what finish will write: one row per delivery item.
+      items: (await stockPlan(id)).items,
       report: report ?? null,
     };
   });
@@ -243,13 +337,33 @@ export async function registerRoutes(app: FastifyInstance) {
     try {
       await client.query("BEGIN");
       await client.query("DELETE FROM invoice_lines WHERE delivery_id = $1", [id]);
+      let newProducts = 0;
       for (const l of invoice.lines) {
+        let productId = l.product_id != null && validIds.has(l.product_id) ? l.product_id : null;
+        const text = l.raw_text.trim();
+        // A product the catalogue does not know yet is added, so later scans count against it.
+        // Reuse only on an exact name/alias match; the user can still re-link the line.
+        if (productId == null && text) {
+          const same = await client.query(
+            `SELECT id FROM products
+              WHERE lower(name) = lower($1) OR lower($1) = ANY (SELECT lower(a) FROM unnest(aliases) a)
+              ORDER BY id LIMIT 1`,
+            [text],
+          );
+          productId = same.rows[0]?.id ?? null;
+          if (productId == null) {
+            productId = (
+              await client.query("INSERT INTO products (name) VALUES ($1) RETURNING id", [text])
+            ).rows[0].id;
+            newProducts++;
+          }
+        }
         await client.query(
           `INSERT INTO invoice_lines (delivery_id, product_id, raw_text, qty, unit_price, confidence)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             id,
-            l.product_id != null && validIds.has(l.product_id) ? l.product_id : null,
+            productId,
             l.raw_text,
             l.qty,
             l.unit_price,
@@ -258,19 +372,17 @@ export async function registerRoutes(app: FastifyInstance) {
         );
       }
       let supplierId: number | null = null;
-      if (invoice.supplier_name) {
+      const supplierName = invoice.supplier_name?.trim();
+      if (supplierName) {
+        // Exact (case-insensitive) match only: a substring match would attach the
+        // delivery to an unrelated supplier that merely shares a word like "Ltd".
         const found = await client.query(
-          "SELECT id FROM suppliers WHERE name ILIKE $1 LIMIT 1",
-          [`%${invoice.supplier_name}%`],
+          "SELECT id FROM suppliers WHERE lower(trim(name)) = lower($1) ORDER BY id LIMIT 1",
+          [supplierName],
         );
         supplierId =
           found.rows[0]?.id ??
-          (
-            await client.query(
-              "INSERT INTO suppliers (name) VALUES ($1) RETURNING id",
-              [invoice.supplier_name],
-            )
-          ).rows[0].id;
+          (await client.query("INSERT INTO suppliers (name) VALUES ($1) RETURNING id", [supplierName])).rows[0].id;
       }
       await client.query(
         `UPDATE deliveries
@@ -280,13 +392,13 @@ export async function registerRoutes(app: FastifyInstance) {
         [id, invoice.invoice_number, invoice.invoice_date, supplierId],
       );
       await client.query("COMMIT");
+      return { language: invoice.language, lines: invoice.lines.length, new_products: newProducts };
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
     } finally {
       client.release();
     }
-    return { language: invoice.language, lines: invoice.lines.length };
   });
 
   // "Fix a line": correct qty or the matched product.
@@ -301,6 +413,42 @@ export async function registerRoutes(app: FastifyInstance) {
       [id, b.qty ?? null, "product_id" in b, b.product_id ?? null],
     );
     return row;
+  });
+
+  // A line the AI missed: the user adds it by hand while reviewing the invoice.
+  app.post("/api/deliveries/:id/invoice-lines", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const b = (req.body ?? {}) as { product_id?: number; qty?: number };
+    const qty = Number(b.qty);
+    if (!b.product_id || !(qty > 0)) {
+      return reply.code(400).send({ error: "product_id and a positive qty are required" });
+    }
+    const delivery = await getDelivery(id);
+    if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
+    if (delivery.status === "closed") {
+      return reply.code(409).send({ error: "Delivery is already closed" });
+    }
+    const [row] = await query(
+      `INSERT INTO invoice_lines (delivery_id, product_id, raw_text, qty, confidence)
+       VALUES ($1, $2, 'Added manually', $3, 1) RETURNING *`,
+      [id, b.product_id, qty],
+    );
+    return row;
+  });
+
+  // A misread line the user removes while reviewing the invoice.
+  app.delete("/api/invoice-lines/:id", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const [line] = await query<{ status: string }>(
+      `SELECT d.status FROM invoice_lines l JOIN deliveries d ON d.id = l.delivery_id WHERE l.id = $1`,
+      [id],
+    );
+    if (!line) return reply.code(404).send({ error: "Invoice line not found" });
+    if (line.status === "closed") {
+      return reply.code(409).send({ error: "Delivery is already closed" });
+    }
+    await query("DELETE FROM invoice_lines WHERE id = $1", [id]);
+    return { ok: true };
   });
 
   // Step 2: scan. Either a barcode or an explicit product (vision/manual).
@@ -438,15 +586,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return existing;
     }
 
-    const scans = await query(
-      "SELECT product_id, qty::float AS qty FROM scans WHERE delivery_id = $1",
-      [id],
-    );
-    const issues = await query(
-      `SELECT i.*, p.name AS product_name, i.qty::float AS qty FROM issues i
-         JOIN products p ON p.id = i.product_id WHERE i.delivery_id = $1 ORDER BY i.id`,
-      [id],
-    );
+    const { scans, issues, split, items: itemRows } = await stockPlan(id);
     const findings = await query(
       `SELECT f.*, f.expected_qty::float AS expected_qty, f.received_qty::float AS received_qty
          FROM findings f WHERE f.delivery_id = $1 ORDER BY f.id`,
@@ -480,7 +620,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     let message = "";
     // Only what the user chose; the AI never invents a requested resolution.
-    const resolution = resolutionText(delivery.requested_resolution, delivery.resolution_note);
+    const resolution = resolutionText(delivery.resolution_note);
     if (items.length) {
       try {
         const draft = await draftSupplierMessage({
@@ -498,29 +638,7 @@ export async function registerRoutes(app: FastifyInstance) {
     } else {
       message = "No problems found with this delivery.";
     }
-    const lineRows = await query<{ id: number; product_id: number | null; raw_text: string; qty: number }>(
-      "SELECT id, product_id, raw_text, qty::float AS qty FROM invoice_lines WHERE delivery_id = $1 ORDER BY id",
-      [id],
-    );
-    const expected = new Map<number, number>();
-    for (const l of lineRows) {
-      if (l.product_id != null) expected.set(l.product_id, (expected.get(l.product_id) ?? 0) + l.qty);
-    }
-    const accepted = new Set(
-      (
-        await query<{ product_id: number }>(
-          "SELECT product_id FROM excess_acceptances WHERE delivery_id = $1",
-          [id],
-        )
-      ).map((r) => r.product_id),
-    );
-    const split = stockSplit(scans, issues, { expected, accepted });
-    const productInfo = new Map(
-      (await query<{ id: number; name: string; unit: string }>("SELECT id, name, unit FROM products")).map(
-        (p) => [p.id, { name: p.name, unit: p.unit }],
-      ),
-    );
-    const itemTable = formatItemRows(buildItemRows(lineRows, scans as any, split, productInfo));
+    const itemTable = formatItemRows(itemRows);
     const body = [
       message,
       "",

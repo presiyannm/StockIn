@@ -17,8 +17,9 @@ export type FindingOut = {
 
 /**
  * Deterministic diff of what the invoice says vs what was scanned.
- * Lines the AI could not match to the catalogue become "mismatch" so a human
- * resolves them; nothing is silently assumed.
+ * Lines the AI could not match to the catalogue, and scanned goods that are not
+ * on the invoice at all (invoice says "dog", "cat" arrived), become "mismatch"
+ * ("no match") so a human resolves them; nothing is silently assumed.
  */
 export function reconcile(
   lines: LineIn[],
@@ -92,10 +93,10 @@ export function reconcile(
     out.push({
       invoice_line_id: null,
       product_id: productId,
-      type: "extra",
+      type: "mismatch",
       expected_qty: 0,
       received_qty: got,
-      detail: `${name}: not on the invoice, ${got} received`,
+      detail: `${name}: not on the invoice (no match), ${got} received`,
     });
   }
 
@@ -152,6 +153,8 @@ export function stockSplit(
 }
 
 export type ItemRow = {
+  /** Null for an invoice line not linked to a catalogue product. */
+  product_id: number | null;
   name: string;
   unit: string;
   expected: number;
@@ -182,6 +185,7 @@ export function buildItemRows(
   for (const l of lines) {
     if (l.product_id == null) {
       rows.push({
+        product_id: null,
         name: l.raw_text,
         unit: "",
         expected: l.qty,
@@ -208,6 +212,7 @@ export function buildItemRows(
     const inStock = stock.get(id) ?? 0;
     const p = products.get(id);
     return {
+      product_id: id,
       name: p?.name ?? `product ${id}`,
       unit: p?.unit ?? "",
       expected: expected.get(id) ?? 0,
@@ -235,11 +240,10 @@ export function formatItemRows(rows: ItemRow[]): string {
     .join("\n");
 }
 
-/** The requested resolution as printed on the report; null when the user chose none. */
-export function resolutionText(choice: string | null, note: string | null): string | null {
-  if (choice !== "credit" && choice !== "replacement") return null;
-  const label = choice === "credit" ? "Credit note requested." : "Replacement requested.";
-  return note ? `${label} ${note}` : label;
+/** The requested resolution as printed on the report: the user's own optional
+ * text, or null when they left it empty. */
+export function resolutionText(note: string | null): string | null {
+  return note?.trim() || null;
 }
 
 /**

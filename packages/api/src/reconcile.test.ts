@@ -18,7 +18,7 @@ test("perfect delivery yields no findings", () => {
   assert.deepEqual(f, []);
 });
 
-test("short, missing, extra and unlisted are classified", () => {
+test("short, missing, extra and not-on-invoice (no match) are classified", () => {
   const f = reconcile(
     [
       { id: 1, product_id: 2, raw_text: "Yogurt", qty: 10 },
@@ -36,7 +36,7 @@ test("short, missing, extra and unlisted are classified", () => {
   assert.equal(byProduct[2], "short");
   assert.equal(byProduct[3], "missing");
   assert.equal(byProduct[1], "extra");
-  assert.equal(byProduct[4], "extra");
+  assert.equal(byProduct[4], "mismatch");
   assert.equal(f.find((x) => x.product_id === 4)!.expected_qty, 0);
 });
 
@@ -48,6 +48,22 @@ test("unmatched invoice line becomes a mismatch, not silently dropped", () => {
   );
   assert.equal(f.length, 1);
   assert.equal(f[0].type, "mismatch");
+});
+
+test("dog invoiced but cat delivered: dog is missing, cat is a no match", () => {
+  const animals = new Map([
+    [10, "Dog food"],
+    [11, "Cat food"],
+  ]);
+  const f = reconcile([{ id: 1, product_id: 10, raw_text: "Dog food", qty: 5 }], [{ product_id: 11, qty: 5 }], animals);
+  assert.deepEqual(
+    f.map((x) => [x.product_id, x.type]),
+    [
+      [10, "missing"],
+      [11, "mismatch"],
+    ],
+  );
+  assert.match(f[1].detail, /not on the invoice \(no match\)/);
 });
 
 test("duplicate invoice lines for one product are summed", () => {
@@ -125,6 +141,7 @@ test("report items include a perfectly matched line and unmatched invoice lines"
     products,
   );
   assert.deepEqual(rows[0], {
+    product_id: 1,
     name: "Milk 1L",
     unit: "pcs",
     expected: 12,
@@ -133,13 +150,14 @@ test("report items include a perfectly matched line and unmatched invoice lines"
     not_counted: 3,
   });
   assert.equal(rows.length, 3);
+  assert.equal(rows[2].product_id, null);
   assert.match(formatItemRows(rows), /Mystery item: expected 4, not matched/);
 });
 
-test("requested resolution is only what the user chose", () => {
-  assert.equal(resolutionText(null, "ignored"), null);
-  assert.equal(resolutionText("credit", null), "Credit note requested.");
-  assert.equal(resolutionText("replacement", "Next Monday"), "Replacement requested. Next Monday");
+test("requested resolution is only the user's optional text", () => {
+  assert.equal(resolutionText(null), null);
+  assert.equal(resolutionText("   "), null);
+  assert.equal(resolutionText(" Credit for the 3 expired units "), "Credit for the 3 expired units");
 });
 
 test("extra units stay out of stock until the user confirms them", () => {

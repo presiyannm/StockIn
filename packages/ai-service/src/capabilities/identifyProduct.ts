@@ -11,7 +11,9 @@ export async function identifyProduct(
     model: config.models.identifyProduct,
     system:
       "You identify a grocery product from a photo by matching it to the shop catalogue. " +
-      "If it is not clearly one catalogue product, return null. Never guess.",
+      "If it is not clearly one catalogue product, return null. Never guess. " +
+      "The shop worker reads `reason` to decide whether to count the item, so write it in plain English, 1-2 short sentences: " +
+      "what you see (brand, product, size, pack/multipack, visible damage) and why it does or does not match.",
     content: [
       imageBlock(image),
       { type: "text", text: `Catalogue (id: name):\n${catalogueText(products)}\n\nWhich product is in the photo?` },
@@ -21,7 +23,7 @@ export async function identifyProduct(
       properties: {
         product_id: { type: ["integer", "null"] },
         confidence: { type: "number" },
-        reason: { type: "string" },
+        reason: { type: "string", description: "What is visible in the photo and why it matches or not" },
       },
       required: ["product_id", "confidence", "reason"],
     },
