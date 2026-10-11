@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CheckCheck, ScanBarcode, Pause, Play, Camera, Sparkles } from "lucide-react";
+import { CheckCheck, ScanBarcode, Pause, Play, Camera, Sparkles, ChevronDown, ListChecks } from "lucide-react";
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
 import { ActionBar, Card, PrimaryButton, QtyStepper, QuickAdds, Sheet } from "@/components/ui-bits";
 import { ProductPicker } from "@/components/product-picker";
@@ -16,9 +16,9 @@ export const Route = createFileRoute("/receive/scan")({
   head: () => ({
     meta: [
       { title: "Step 2 — Scan Items | StockIn" },
-      { name: "description", content: "Scan package barcodes, count items, and register new products on the fly." },
+      { name: "description", content: "Photograph each product and let the AI identify it, or scan its barcode." },
       { property: "og:title", content: "Step 2 — Scan Items | StockIn" },
-      { property: "og:description", content: "Scan package barcodes, count items, and register new products on the fly." },
+      { property: "og:description", content: "Photograph each product and let the AI identify it, or scan its barcode." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -63,9 +63,11 @@ function ScanPage() {
   const [identifying, setIdentifying] = useState(false);
   const [suggestion, setSuggestion] = useState<IdentifyResult | null>(null);
   const [pickOpen, setPickOpen] = useState(false);
+  // Photos are the main way to count; the live barcode scanner is opt-in.
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
 
   const open = !!data && data.delivery.status !== "closed";
-  const cam = useCamera(videoRef, open);
+  const cam = useCamera(videoRef, open && barcodeOpen);
   const pausedRef = useRef(false);
   pausedRef.current = unknown !== null || editRow !== null || suggestion !== null || pickOpen || paused;
   const lastRef = useRef<{ code: string; t: number }>({ code: "", t: 0 });
@@ -156,8 +158,8 @@ function ScanPage() {
     };
   }, [cam.ready]);
 
-  if (isPending) return <PageMessage title="Scan items" text="Loading…" />;
-  if (!data) return <PageMessage title="Scan items" text="Delivery not found." onBack={() => navigate({ to: "/" })} />;
+  if (isPending) return <PageMessage title="Count items" text="Loading…" />;
+  if (!data) return <PageMessage title="Count items" text="Delivery not found." onBack={() => navigate({ to: "/" })} />;
   const d = data.delivery;
   const rows = productRows(data);
   const expectedTotal = rows.reduce((a, r) => a + r.expected, 0);
@@ -188,7 +190,7 @@ function ScanPage() {
     <AppShell>
       <PageHeader
         onBack={() => navigate({ to: "/receive/invoice", search: { delivery: d.id } })}
-        title="Scan items"
+        title="Count items"
         subtitle={`${deliveryLabel(d)} · Step 2 of 5`}
         right={
           <span className="rounded-full bg-primary/10 px-3 py-1 font-mono text-sm font-bold text-primary">
@@ -198,33 +200,44 @@ function ScanPage() {
       />
 
       <div className="space-y-4 p-4 pb-40">
-        {open ? (
-          <div className="relative overflow-hidden rounded-2xl bg-navy">
-            <video ref={videoRef} className="aspect-[4/3] w-full object-cover" muted playsInline autoPlay />
-            {cam.ready ? (
-              <div className="scanner-frame pointer-events-none absolute inset-x-10 inset-y-10">
-                {!paused && <div className="animate-scan-sweep absolute inset-x-0 h-0.5 bg-primary" />}
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-navy-foreground">
-                <ScanBarcode className="h-10 w-10 opacity-70" />
-                <p className="text-sm font-bold">{cam.error ?? "Opening scanner…"}</p>
-              </div>
-            )}
-            <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-3 py-1 text-xs font-bold text-navy-foreground">
-              {paused ? "Paused" : "Scanning — just point at barcodes"}
-            </span>
+        {!open && <Card className="text-sm font-bold">This delivery is closed; quantities can no longer change.</Card>}
+
+        {open && (
+          <>
+            <input
+              ref={photoRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                identify(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
             <button
               type="button"
-              onClick={() => setPaused((p) => !p)}
-              className="press absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-navy/70 text-navy-foreground"
-              aria-label={paused ? "Resume scanning" : "Pause scanning"}
+              onClick={() => photoRef.current?.click()}
+              disabled={identifying}
+              className="press flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-10 text-primary-foreground shadow-lg disabled:opacity-70"
             >
-              {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-foreground/15">
+                {identifying ? <Sparkles className="h-8 w-8 animate-pulse-soft" /> : <Camera className="h-8 w-8" />}
+              </span>
+              <span className="text-lg font-bold">{identifying ? "Identifying…" : "Take a photo of the product"}</span>
+              <span className="text-xs opacity-80">
+                {identifying ? "The AI is matching it to your catalogue" : "The AI recognises it, you confirm, it's counted"}
+              </span>
             </button>
-          </div>
-        ) : (
-          <Card className="text-sm font-bold">This delivery is closed; quantities can no longer change.</Card>
+
+            <button
+              type="button"
+              onClick={() => setPickOpen(true)}
+              className="press flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-xs font-bold"
+            >
+              <ListChecks className="h-4 w-4" /> Pick from catalogue
+            </button>
+          </>
         )}
 
         {lastScan && (
@@ -234,62 +247,67 @@ function ScanPage() {
         )}
 
         {open && (
-          <>
-            <div>
-              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">Or enter barcode manually</p>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (manualCode.trim()) {
-                    handleBarcode(manualCode.trim());
-                    setManualCode("");
-                  }
-                }}
-              >
-                <input
-                  value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="3800000000011"
-                  className="h-12 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-                <button type="submit" className="press h-12 rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground">
-                  Add
-                </button>
-              </form>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                ref={photoRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  identify(e.target.files?.[0]);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => photoRef.current?.click()}
-                disabled={identifying}
-                className="press flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 py-3 text-xs font-bold text-primary disabled:opacity-50"
-              >
-                {identifying ? <Sparkles className="h-4 w-4 animate-pulse-soft" /> : <Camera className="h-4 w-4" />}
-                {identifying ? "Identifying…" : "No barcode? Photo"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickOpen(true)}
-                className="press rounded-xl border border-border bg-card py-3 text-xs font-bold"
-              >
-                Pick from catalogue
-              </button>
-            </div>
-          </>
+          <Card className="p-0">
+            <button
+              type="button"
+              onClick={() => setBarcodeOpen((o) => !o)}
+              aria-expanded={barcodeOpen}
+              className="press flex w-full items-center gap-3 p-3 text-left"
+            >
+              <ScanBarcode className="h-5 w-5 text-muted-foreground" />
+              <span className="flex-1 text-sm font-bold">Scan a barcode instead</span>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${barcodeOpen ? "rotate-180" : ""}`} />
+            </button>
+            {barcodeOpen && (
+              <div className="space-y-3 border-t border-border p-3">
+                <div className="relative overflow-hidden rounded-xl bg-navy">
+                  <video ref={videoRef} className="aspect-[4/3] w-full object-cover" muted playsInline autoPlay />
+                  {cam.ready ? (
+                    <div className="scanner-frame pointer-events-none absolute inset-x-10 inset-y-10">
+                      {!paused && <div className="animate-scan-sweep absolute inset-x-0 h-0.5 bg-primary" />}
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-navy-foreground">
+                      <ScanBarcode className="h-10 w-10 opacity-70" />
+                      <p className="text-sm font-bold">{cam.error ?? "Opening scanner…"}</p>
+                    </div>
+                  )}
+                  <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-3 py-1 text-xs font-bold text-navy-foreground">
+                    {paused ? "Paused" : "Point at a barcode"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPaused((p) => !p)}
+                    className="press absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-navy/70 text-navy-foreground"
+                    aria-label={paused ? "Resume scanning" : "Pause scanning"}
+                  >
+                    {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                  </button>
+                </div>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (manualCode.trim()) {
+                      handleBarcode(manualCode.trim());
+                      setManualCode("");
+                    }
+                  }}
+                >
+                  <input
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Or type the barcode"
+                    className="h-12 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button type="submit" className="press h-12 rounded-xl bg-secondary px-6 text-sm font-bold">
+                    Add
+                  </button>
+                </form>
+              </div>
+            )}
+          </Card>
         )}
 
         <div>
@@ -297,7 +315,7 @@ function ScanPage() {
           <div className="space-y-2">
             {scanned.length === 0 && (
               <p className="py-4 text-center text-xs text-muted-foreground">
-                Nothing counted yet. Seed barcodes: 3800000000011, …028, …035, …042
+                Nothing counted yet. Take a photo of the first product.
               </p>
             )}
             {scanned.map((r) => (

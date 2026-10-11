@@ -21,7 +21,7 @@ export const Route = createFileRoute("/")({
 
 const steps = [
   { icon: Camera, label: "Capture invoice" },
-  { icon: ScanBarcode, label: "Scan items" },
+  { icon: ScanBarcode, label: "Photograph or scan items" },
   { icon: CheckCheck, label: "Reconcile" },
   { icon: ClipboardList, label: "Report issues" },
   { icon: FileCheck2, label: "Confirm & print report" },
