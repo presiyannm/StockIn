@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CheckCheck, ScanBarcode, Camera, Sparkles, ListChecks, ImagePlus, Check, X } from "lucide-react";
+import { CheckCheck, ScanBarcode, Camera, Sparkles, ListChecks, ImagePlus, Check, X, Trash2 } from "lucide-react";
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
 import { ActionBar, Card, PrimaryButton, QtyStepper, QuickAdds, Sheet } from "@/components/ui-bits";
 import { ProductPicker } from "@/components/product-picker";
@@ -72,6 +72,8 @@ function ScanPage() {
   const [lastScan, setLastScan] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<ProductRow | null>(null);
   const [pickOpen, setPickOpen] = useState(false);
+  // Photos taken but not sent to the AI yet; the user sends them all with one tap.
+  const [pending, setPending] = useState<string[]>([]);
   const [shots, setShots] = useState<Shot[]>([]);
   // The photo whose product the user is choosing by hand.
   const [fixShot, setFixShot] = useState<Shot | null>(null);
@@ -193,15 +195,23 @@ function ScanPage() {
   const dropShot = (id: number) => setShots((all) => all.filter((s) => s.id !== id));
 
   // The AI only suggests; nothing is counted until the user taps Count.
-  async function addShot(src: string) {
-    const id = nextShotId++;
-    setShots((all) => [{ id, src, status: "identifying", product: null, confidence: 0, reason: "" }, ...all]);
+  async function identifyShot(id: number, src: string) {
     try {
       const r = await identifyProduct(delivery, await dataUrlToBlob(src));
       updateShot(id, { status: "done", product: r.product, confidence: r.confidence, reason: r.reason });
     } catch (e) {
       updateShot(id, { status: "error", reason: (e as Error).message });
     }
+  }
+
+  function identifyPending() {
+    const batch = pending.map((src) => ({ id: nextShotId++, src }));
+    setPending([]);
+    setShots((all) => [
+      ...batch.map((b): Shot => ({ ...b, status: "identifying", product: null, confidence: 0, reason: "" })),
+      ...all,
+    ]);
+    batch.forEach((b) => identifyShot(b.id, b.src));
   }
 
   function snap() {
@@ -211,7 +221,7 @@ function ScanPage() {
     if (!url) return;
     setFlash(true);
     setTimeout(() => setFlash(false), 150);
-    addShot(url);
+    setPending((p) => [...p, url]);
   }
 
   async function countShot(shot: Shot, p: Product, method: "vision" | "manual") {
@@ -248,7 +258,7 @@ function ScanPage() {
               multiple
               className="hidden"
               onChange={(e) => {
-                readFiles(e.target.files, addShot);
+                readFiles(e.target.files, (u) => setPending((p) => [...p, u]));
                 e.target.value = "";
               }}
             />
@@ -268,7 +278,11 @@ function ScanPage() {
                 </div>
               )}
               <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-3 py-1 text-xs font-bold text-navy-foreground">
-                {barcodeMode ? "Point at a barcode" : "Snap each product, keep going"}
+                {barcodeMode
+                  ? "Point at a barcode"
+                  : pending.length
+                    ? `${pending.length} new photo${pending.length === 1 ? "" : "s"}`
+                    : "Snap each product, keep going"}
               </span>
               <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-6">
                 <button
@@ -337,6 +351,29 @@ function ScanPage() {
           </>
         )}
 
+        {pending.length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              New photos ({pending.length})
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {pending.map((src, i) => (
+                <div key={i} className="relative w-20 shrink-0 overflow-hidden rounded-xl border-2 border-primary">
+                  <img src={src} alt={`Photo ${i + 1}`} className="aspect-square w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
+                    className="press absolute right-1 top-1 rounded-md bg-destructive p-1 text-destructive-foreground"
+                    aria-label="Delete photo"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {lastScan && (
           <Card className="border-success/40 bg-success/10 p-3">
             <p className="text-sm font-bold text-success">✓ Counted: {lastScan}</p>
@@ -346,7 +383,7 @@ function ScanPage() {
         {shots.length > 0 && (
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Photos to confirm ({shots.length})</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">What the AI sees ({shots.length})</p>
               {recognised.length > 1 && (
                 <button
                   type="button"
@@ -359,51 +396,61 @@ function ScanPage() {
             </div>
             <div className="space-y-2">
               {shots.map((shot) => (
-                <Card key={shot.id} className="flex items-center gap-3 p-2">
-                  <img src={shot.src} alt="Product" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                  <div className="min-w-0 flex-1">
-                    {shot.status === "identifying" ? (
-                      <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
-                        <Sparkles className="h-4 w-4 animate-pulse-soft" /> Identifying…
-                      </p>
-                    ) : shot.product ? (
-                      <>
-                        <p className="truncate text-sm font-bold">{shot.product.name}</p>
-                        <p className="text-[11px] text-muted-foreground">AI {Math.round(shot.confidence * 100)}% sure</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-bold text-destructive">Not recognised</p>
-                        <p className="truncate text-[11px] text-muted-foreground">{shot.reason}</p>
-                      </>
-                    )}
+                <Card key={shot.id} className="p-3">
+                  <div className="flex gap-3">
+                    <img src={shot.src} alt="Product" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
+                    <div className="min-w-0 flex-1">
+                      {shot.status === "identifying" ? (
+                        <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
+                          <Sparkles className="h-4 w-4 animate-pulse-soft" /> AI is looking at the photo…
+                        </p>
+                      ) : (
+                        <>
+                          <p className={`text-sm font-bold leading-snug ${shot.product ? "" : "text-destructive"}`}>
+                            {shot.product ? shot.product.name : shot.status === "error" ? "Could not identify" : "Not recognised"}
+                          </p>
+                          {shot.product && (
+                            <span
+                              className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                shot.confidence >= 0.75 ? "bg-success/15 text-success" : "bg-warning/25 text-warning-foreground"
+                              }`}
+                            >
+                              {Math.round(shot.confidence * 100)}% sure
+                            </span>
+                          )}
+                          {shot.reason && <p className="mt-1 text-xs text-muted-foreground">{shot.reason}</p>}
+                        </>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => dropShot(shot.id)}
+                      className="press self-start rounded-lg p-1.5 text-muted-foreground"
+                      aria-label="Discard photo"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
-                  {shot.status === "done" && shot.product && (
-                    <button
-                      type="button"
-                      onClick={() => countShot(shot, shot.product!, "vision")}
-                      className="press flex items-center gap-1 rounded-lg bg-success px-3 py-2 text-xs font-bold text-success-foreground"
-                    >
-                      <Check className="h-4 w-4" /> Count
-                    </button>
-                  )}
                   {shot.status !== "identifying" && (
-                    <button
-                      type="button"
-                      onClick={() => setFixShot(shot)}
-                      className="press rounded-lg border border-border px-2.5 py-2 text-[11px] font-bold"
-                    >
-                      {shot.product ? "Change" : "Pick"}
-                    </button>
+                    <div className="mt-3 flex gap-2">
+                      {shot.product && (
+                        <button
+                          type="button"
+                          onClick={() => countShot(shot, shot.product!, "vision")}
+                          className="press flex flex-1 items-center justify-center gap-1 rounded-xl bg-success py-2.5 text-xs font-bold text-success-foreground"
+                        >
+                          <Check className="h-4 w-4" /> Yes, count 1
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setFixShot(shot)}
+                        className="press flex-1 rounded-xl border border-border py-2.5 text-xs font-bold"
+                      >
+                        {shot.product ? "No, choose product" : "Choose product"}
+                      </button>
+                    </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => dropShot(shot.id)}
-                    className="press rounded-lg p-2 text-muted-foreground"
-                    aria-label="Discard photo"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </Card>
               ))}
             </div>
@@ -463,12 +510,18 @@ function ScanPage() {
       </div>
 
       <ActionBar>
-        <PrimaryButton
-          onClick={() => navigate({ to: "/receive/reconcile", search: { delivery: d.id } })}
-          disabled={rows.length === 0}
-        >
-          <CheckCheck className="h-4 w-4" /> Compare with invoice
-        </PrimaryButton>
+        {pending.length > 0 ? (
+          <PrimaryButton onClick={identifyPending}>
+            <Sparkles className="h-4 w-4" /> Identify {pending.length} photo{pending.length === 1 ? "" : "s"} with AI
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton
+            onClick={() => navigate({ to: "/receive/reconcile", search: { delivery: d.id } })}
+            disabled={rows.length === 0}
+          >
+            <CheckCheck className="h-4 w-4" /> Compare with invoice
+          </PrimaryButton>
+        )}
       </ActionBar>
 
       {/* Unknown barcode: match to an existing product or create one, then count it. */}
