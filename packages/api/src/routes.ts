@@ -128,6 +128,29 @@ export async function registerRoutes(app: FastifyInstance) {
     return row;
   });
 
+  // Attach a barcode to a product that has none yet (e.g. one added from an invoice line),
+  // so the next scan of that code finds it directly.
+  app.patch("/api/products/:id", async (req, reply) => {
+    const id = Number((req.params as any).id);
+    const barcode = ((req.body ?? {}) as { barcode?: string }).barcode?.trim();
+    if (!barcode) return reply.code(400).send({ error: "barcode is required" });
+    const [product] = await query<{ barcode: string | null }>("SELECT barcode FROM products WHERE id = $1", [id]);
+    if (!product) return reply.code(404).send({ error: "Product not found" });
+    if (product.barcode && product.barcode !== barcode) {
+      return reply.code(400).send({ error: `Product already has barcode ${product.barcode}` });
+    }
+    const [taken] = await query<{ name: string }>("SELECT name FROM products WHERE barcode = $1 AND id <> $2", [
+      barcode,
+      id,
+    ]);
+    if (taken) return reply.code(409).send({ error: `Barcode ${barcode} already belongs to "${taken.name}"` });
+    const [row] = await query(
+      "UPDATE products SET barcode = $2 WHERE id = $1 RETURNING id, name, barcode, unit, aliases",
+      [id, barcode],
+    );
+    return row;
+  });
+
   // Current stock per product: the sum of what finished deliveries wrote.
   app.get("/api/stock", () =>
     query(
@@ -157,21 +180,18 @@ export async function registerRoutes(app: FastifyInstance) {
     return row;
   });
 
-  // The user's requested resolution for the whole delivery (credit or replacement).
+  // The user's requested resolution for the whole delivery: optional free text.
   app.patch("/api/deliveries/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
-    const b = (req.body ?? {}) as { requested_resolution?: string | null; resolution_note?: string | null };
-    if (b.requested_resolution != null && !["credit", "replacement"].includes(b.requested_resolution)) {
-      return reply.code(400).send({ error: "requested_resolution must be credit, replacement or null" });
-    }
+    const b = (req.body ?? {}) as { resolution_note?: string | null };
     const delivery = await getDelivery(id);
     if (!delivery) return reply.code(404).send({ error: "Delivery not found" });
     if (delivery.status === "closed") {
       return reply.code(409).send({ error: "Delivery is already closed" });
     }
     const [row] = await query(
-      "UPDATE deliveries SET requested_resolution = $2, resolution_note = $3 WHERE id = $1 RETURNING *",
-      [id, b.requested_resolution ?? null, b.resolution_note || null],
+      "UPDATE deliveries SET requested_resolution = NULL, resolution_note = $2 WHERE id = $1 RETURNING *",
+      [id, b.resolution_note?.trim() || null],
     );
     return row;
   });
@@ -317,13 +337,33 @@ export async function registerRoutes(app: FastifyInstance) {
     try {
       await client.query("BEGIN");
       await client.query("DELETE FROM invoice_lines WHERE delivery_id = $1", [id]);
+      let newProducts = 0;
       for (const l of invoice.lines) {
+        let productId = l.product_id != null && validIds.has(l.product_id) ? l.product_id : null;
+        const text = l.raw_text.trim();
+        // A product the catalogue does not know yet is added, so later scans count against it.
+        // Reuse only on an exact name/alias match; the user can still re-link the line.
+        if (productId == null && text) {
+          const same = await client.query(
+            `SELECT id FROM products
+              WHERE lower(name) = lower($1) OR lower($1) = ANY (SELECT lower(a) FROM unnest(aliases) a)
+              ORDER BY id LIMIT 1`,
+            [text],
+          );
+          productId = same.rows[0]?.id ?? null;
+          if (productId == null) {
+            productId = (
+              await client.query("INSERT INTO products (name) VALUES ($1) RETURNING id", [text])
+            ).rows[0].id;
+            newProducts++;
+          }
+        }
         await client.query(
           `INSERT INTO invoice_lines (delivery_id, product_id, raw_text, qty, unit_price, confidence)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             id,
-            l.product_id != null && validIds.has(l.product_id) ? l.product_id : null,
+            productId,
             l.raw_text,
             l.qty,
             l.unit_price,
@@ -332,19 +372,17 @@ export async function registerRoutes(app: FastifyInstance) {
         );
       }
       let supplierId: number | null = null;
-      if (invoice.supplier_name) {
+      const supplierName = invoice.supplier_name?.trim();
+      if (supplierName) {
+        // Exact (case-insensitive) match only: a substring match would attach the
+        // delivery to an unrelated supplier that merely shares a word like "Ltd".
         const found = await client.query(
-          "SELECT id FROM suppliers WHERE name ILIKE $1 LIMIT 1",
-          [`%${invoice.supplier_name}%`],
+          "SELECT id FROM suppliers WHERE lower(trim(name)) = lower($1) ORDER BY id LIMIT 1",
+          [supplierName],
         );
         supplierId =
           found.rows[0]?.id ??
-          (
-            await client.query(
-              "INSERT INTO suppliers (name) VALUES ($1) RETURNING id",
-              [invoice.supplier_name],
-            )
-          ).rows[0].id;
+          (await client.query("INSERT INTO suppliers (name) VALUES ($1) RETURNING id", [supplierName])).rows[0].id;
       }
       await client.query(
         `UPDATE deliveries
@@ -354,13 +392,13 @@ export async function registerRoutes(app: FastifyInstance) {
         [id, invoice.invoice_number, invoice.invoice_date, supplierId],
       );
       await client.query("COMMIT");
+      return { language: invoice.language, lines: invoice.lines.length, new_products: newProducts };
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
     } finally {
       client.release();
     }
-    return { language: invoice.language, lines: invoice.lines.length };
   });
 
   // "Fix a line": correct qty or the matched product.
@@ -582,7 +620,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     let message = "";
     // Only what the user chose; the AI never invents a requested resolution.
-    const resolution = resolutionText(delivery.requested_resolution, delivery.resolution_note);
+    const resolution = resolutionText(delivery.resolution_note);
     if (items.length) {
       try {
         const draft = await draftSupplierMessage({

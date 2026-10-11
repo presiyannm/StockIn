@@ -12,7 +12,8 @@ export function extractInvoice(
     system:
       "You read delivery invoices and delivery notes (Bulgarian or English, possibly photographed at an angle) for a small shop. " +
       "Extract every product line exactly as printed. Never invent lines. If a number is unreadable, lower the confidence instead of guessing. " +
-      "Match each line to the shop catalogue by product_id when you are reasonably sure, otherwise use null.",
+      "Match each line to the shop catalogue by product_id when you are reasonably sure, otherwise use null. " +
+      "supplier_name is the seller who issued the invoice (Bulgarian: Доставчик or Продавач), never the buyer (Получател or Купувач).",
     content: [
       ...images.map(imageBlock),
       {
@@ -23,7 +24,10 @@ export function extractInvoice(
     schema: {
       type: "object",
       properties: {
-        supplier_name: { type: ["string", "null"] },
+        supplier_name: {
+          type: ["string", "null"],
+          description: "Seller/issuer company name exactly as printed, not the buyer",
+        },
         invoice_number: { type: ["string", "null"] },
         invoice_date: {
           type: ["string", "null"],

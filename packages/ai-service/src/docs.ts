@@ -50,7 +50,7 @@ export const routeDocs = {
       200: {
         type: "object",
         properties: {
-          supplier_name: { type: ["string", "null"] },
+          supplier_name: { type: ["string", "null"], description: "Seller who issued the invoice, not the buyer" },
           invoice_number: { type: ["string", "null"] },
           invoice_date: { type: ["string", "null"], description: "YYYY-MM-DD" },
           language,

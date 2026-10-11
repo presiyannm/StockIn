@@ -35,7 +35,7 @@ export function renderReportHtml(input: {
   Received: ${esc(date)}
 </div>
 <pre>${esc(report.body)}</pre>
-${report.requested_resolution ? `<p><b>Requested:</b> ${esc(report.requested_resolution)}</p>` : ""}
+${report.requested_resolution ? `<p><b>Requested resolution:</b> ${esc(report.requested_resolution)}</p>` : ""}
 ${photos.length ? `<h3>Photos</h3><div class="photos">${photos.map((p) => `<img src="${esc(p.url)}" alt="">`).join("")}</div>` : ""}
 <div class="sig">Signed</div>
 </body></html>`;
