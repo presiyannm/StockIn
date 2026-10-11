@@ -1,9 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { ArrowRight, Plus, Truck, ClipboardList, Camera, ScanBarcode, CheckCheck, FileCheck2 } from "lucide-react";
 import { AppShell, PageHeader, deliveryLabel } from "@/components/app-shell";
-import { Card, PrimaryButton, Sheet } from "@/components/ui-bits";
-import { SupplierPicker } from "@/components/supplier-picker";
+import { Card, PrimaryButton } from "@/components/ui-bits";
 import { createDelivery } from "@/lib/api/client";
 import { useDeliveries, useDeliveryAction } from "@/lib/api/queries";
 
@@ -39,19 +37,17 @@ const nextRoute = {
 function HomePage() {
   const navigate = useNavigate();
   const { data: deliveries, isPending, error } = useDeliveries();
-  const [newOpen, setNewOpen] = useState(false);
-  const [supplierId, setSupplierId] = useState<number | null>(null);
   const { run, busy } = useDeliveryAction(0);
 
   const active = deliveries?.find((d) => d.status !== "closed");
 
+  // No supplier step: the AI reads the supplier from the invoice (and adds it if it is new).
   async function start() {
     let id = 0;
     const ok = await run(async () => {
-      id = (await createDelivery(supplierId)).id;
+      id = (await createDelivery(null)).id;
     });
     if (!ok) return;
-    setNewOpen(false);
     navigate({ to: "/receive/invoice", search: { delivery: id } });
   }
 
@@ -88,10 +84,11 @@ function HomePage() {
               </PrimaryButton>
               <button
                 type="button"
-                onClick={() => setNewOpen(true)}
+                onClick={start}
+                disabled={busy}
                 className="press w-full py-2 text-xs font-bold text-muted-foreground"
               >
-                Start another delivery
+                {busy ? "Creating…" : "Start another delivery"}
               </button>
             </div>
           </Card>
@@ -107,8 +104,8 @@ function HomePage() {
               <Truck className="h-8 w-8 text-muted-foreground" />
             </div>
             <div className="mt-4">
-              <PrimaryButton onClick={() => setNewOpen(true)} disabled={!!error}>
-                <Plus className="h-4 w-4" /> New delivery
+              <PrimaryButton onClick={start} disabled={!!error || busy}>
+                <Plus className="h-4 w-4" /> {busy ? "Creating…" : "New delivery"}
               </PrimaryButton>
             </div>
           </Card>
@@ -133,15 +130,6 @@ function HomePage() {
           Browse stock catalogue →
         </Link>
       </div>
-
-      <Sheet open={newOpen} onClose={() => setNewOpen(false)} title="New delivery">
-        <div className="space-y-4">
-          <SupplierPicker value={supplierId} onChange={setSupplierId} />
-          <PrimaryButton onClick={start} disabled={busy}>
-            {busy ? "Creating…" : "Start receiving"}
-          </PrimaryButton>
-        </div>
-      </Sheet>
     </AppShell>
   );
 }
