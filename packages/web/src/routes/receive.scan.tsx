@@ -1,23 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CheckCheck, ScanBarcode, Pause, Play, Camera, Sparkles, ChevronDown, ListChecks } from "lucide-react";
+import { CheckCheck, ScanBarcode, Camera, Sparkles, ListChecks, ImagePlus, Check, X } from "lucide-react";
 import { AppShell, PageHeader, PageMessage, deliveryLabel } from "@/components/app-shell";
 import { ActionBar, Card, PrimaryButton, QtyStepper, QuickAdds, Sheet } from "@/components/ui-bits";
 import { ProductPicker } from "@/components/product-picker";
 import { ApiError, identifyProduct, scanBarcode, scanProduct, setProductBarcode, setReceivedQty } from "@/lib/api/client";
 import { useDelivery, useDeliveryAction, useProducts } from "@/lib/api/queries";
-import type { IdentifyResult, Product } from "@/lib/api/types";
+import type { Product } from "@/lib/api/types";
 import { productRows, type ProductRow } from "@/lib/rows";
-import { useCamera } from "@/lib/camera";
+import { useCamera, captureFrame, dataUrlToBlob, readFiles } from "@/lib/camera";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/receive/scan")({
   validateSearch: (s: Record<string, unknown>) => ({ delivery: Number(s["delivery"]) || 0 }),
   head: () => ({
     meta: [
-      { title: "Step 2 — Scan Items | StockIn" },
+      { title: "Step 2 — Count Items | StockIn" },
       { name: "description", content: "Photograph each product and let the AI identify it, or scan its barcode." },
-      { property: "og:title", content: "Step 2 — Scan Items | StockIn" },
+      { property: "og:title", content: "Step 2 — Count Items | StockIn" },
       { property: "og:description", content: "Photograph each product and let the AI identify it, or scan its barcode." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -47,6 +47,18 @@ function beep() {
   }
 }
 
+/** One product photo: the AI identifies it in the background while the user keeps shooting. */
+type Shot = {
+  id: number;
+  src: string;
+  status: "identifying" | "done" | "error";
+  product: Product | null;
+  confidence: number;
+  reason: string;
+};
+
+let nextShotId = 1;
+
 function ScanPage() {
   const { delivery } = Route.useSearch();
   const navigate = useNavigate();
@@ -56,20 +68,21 @@ function ScanPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
   const [manualCode, setManualCode] = useState("");
-  const [paused, setPaused] = useState(false);
   const [unknown, setUnknown] = useState<string | null>(null);
   const [lastScan, setLastScan] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<ProductRow | null>(null);
-  const [identifying, setIdentifying] = useState(false);
-  const [suggestion, setSuggestion] = useState<IdentifyResult | null>(null);
   const [pickOpen, setPickOpen] = useState(false);
-  // Photos are the main way to count; the live barcode scanner is opt-in.
-  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [shots, setShots] = useState<Shot[]>([]);
+  // The photo whose product the user is choosing by hand.
+  const [fixShot, setFixShot] = useState<Shot | null>(null);
+  const [flash, setFlash] = useState(false);
+  // Photos are the main way to count; barcode mode reuses the same camera.
+  const [barcodeMode, setBarcodeMode] = useState(false);
 
   const open = !!data && data.delivery.status !== "closed";
-  const cam = useCamera(videoRef, open && barcodeOpen);
+  const cam = useCamera(videoRef, open);
   const pausedRef = useRef(false);
-  pausedRef.current = unknown !== null || editRow !== null || suggestion !== null || pickOpen || paused;
+  pausedRef.current = !barcodeMode || unknown !== null || editRow !== null || pickOpen || fixShot !== null;
   const lastRef = useRef<{ code: string; t: number }>({ code: "", t: 0 });
 
   async function handleBarcode(code: string, fromCamera = false) {
@@ -102,9 +115,9 @@ function ScanPage() {
   const handlerRef = useRef(handleBarcode);
   handlerRef.current = handleBarcode;
 
-  // Continuous detection once the camera is live
+  // Continuous barcode detection, only in barcode mode
   useEffect(() => {
-    if (!cam.ready || !videoRef.current) return;
+    if (!cam.ready || !barcodeMode || !videoRef.current) return;
     const video = videoRef.current;
     let stopped = false;
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -156,7 +169,7 @@ function ScanPage() {
       if (interval) clearInterval(interval);
       controls?.stop();
     };
-  }, [cam.ready]);
+  }, [cam.ready, barcodeMode]);
 
   if (isPending) return <PageMessage title="Count items" text="Loading…" />;
   if (!data) return <PageMessage title="Count items" text="Delivery not found." onBack={() => navigate({ to: "/" })} />;
@@ -166,6 +179,7 @@ function ScanPage() {
   const receivedTotal = rows.reduce((a, r) => a + r.received, 0);
   const scanned = rows.filter((r) => r.received > 0);
   const waiting = rows.filter((r) => r.received === 0 && r.product_id != null);
+  const recognised = shots.filter((s) => s.status === "done" && s.product);
 
   async function countProduct(p: Product, method: "manual" | "vision" | "barcode") {
     if (await run(() => scanProduct(delivery, p.id, 1, method))) {
@@ -174,16 +188,39 @@ function ScanPage() {
     }
   }
 
-  async function identify(file: File | undefined) {
-    if (!file) return;
-    setIdentifying(true);
+  const updateShot = (id: number, patch: Partial<Shot>) =>
+    setShots((all) => all.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const dropShot = (id: number) => setShots((all) => all.filter((s) => s.id !== id));
+
+  // The AI only suggests; nothing is counted until the user taps Count.
+  async function addShot(src: string) {
+    const id = nextShotId++;
+    setShots((all) => [{ id, src, status: "identifying", product: null, confidence: 0, reason: "" }, ...all]);
     try {
-      setSuggestion(await identifyProduct(delivery, file));
+      const r = await identifyProduct(delivery, await dataUrlToBlob(src));
+      updateShot(id, { status: "done", product: r.product, confidence: r.confidence, reason: r.reason });
     } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setIdentifying(false);
+      updateShot(id, { status: "error", reason: (e as Error).message });
     }
+  }
+
+  function snap() {
+    const v = videoRef.current;
+    if (!v) return;
+    const url = captureFrame(v, 1024);
+    if (!url) return;
+    setFlash(true);
+    setTimeout(() => setFlash(false), 150);
+    addShot(url);
+  }
+
+  async function countShot(shot: Shot, p: Product, method: "vision" | "manual") {
+    dropShot(shot.id);
+    await countProduct(p, method);
+  }
+
+  async function countAll() {
+    for (const shot of recognised) await countShot(shot, shot.product!, "vision");
   }
 
   return (
@@ -208,35 +245,95 @@ function ScanPage() {
               ref={photoRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              multiple
               className="hidden"
               onChange={(e) => {
-                identify(e.target.files?.[0]);
+                readFiles(e.target.files, addShot);
                 e.target.value = "";
               }}
             />
-            <button
-              type="button"
-              onClick={() => photoRef.current?.click()}
-              disabled={identifying}
-              className="press flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-10 text-primary-foreground shadow-lg disabled:opacity-70"
-            >
-              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-foreground/15">
-                {identifying ? <Sparkles className="h-8 w-8 animate-pulse-soft" /> : <Camera className="h-8 w-8" />}
+            <div className="relative overflow-hidden rounded-2xl bg-navy">
+              <video ref={videoRef} className="aspect-[3/4] w-full object-cover" muted playsInline autoPlay />
+              {flash && <div className="absolute inset-0 bg-card/70" />}
+              {cam.ready && barcodeMode && (
+                <div className="scanner-frame pointer-events-none absolute inset-x-10 inset-y-24">
+                  <div className="animate-scan-sweep absolute inset-x-0 h-0.5 bg-primary" />
+                </div>
+              )}
+              {!cam.ready && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-navy-foreground">
+                  <Camera className="h-10 w-10 opacity-70" />
+                  <p className="text-sm font-bold">{cam.error ?? "Opening camera…"}</p>
+                  <p className="text-xs opacity-80">You can add product photos with the gallery button.</p>
+                </div>
+              )}
+              <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-3 py-1 text-xs font-bold text-navy-foreground">
+                {barcodeMode ? "Point at a barcode" : "Snap each product, keep going"}
               </span>
-              <span className="text-lg font-bold">{identifying ? "Identifying…" : "Take a photo of the product"}</span>
-              <span className="text-xs opacity-80">
-                {identifying ? "The AI is matching it to your catalogue" : "The AI recognises it, you confirm, it's counted"}
-              </span>
-            </button>
+              <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-6">
+                <button
+                  type="button"
+                  onClick={() => photoRef.current?.click()}
+                  className="press flex h-12 w-12 items-center justify-center rounded-full bg-navy/70 text-navy-foreground"
+                  aria-label="Add photos from gallery"
+                >
+                  <ImagePlus className="h-5 w-5" />
+                </button>
+                {barcodeMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeMode(false)}
+                    className="press flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-navy/70 text-navy-foreground"
+                    aria-label="Back to photos"
+                  >
+                    <Camera className="h-7 w-7" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={snap}
+                    disabled={!cam.ready}
+                    className="press h-20 w-20 rounded-full border-4 border-card bg-primary disabled:opacity-40"
+                    aria-label="Take product photo"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBarcodeMode((b) => !b)}
+                  className={`press flex h-12 w-12 items-center justify-center rounded-full ${
+                    barcodeMode ? "bg-primary text-primary-foreground" : "bg-navy/70 text-navy-foreground"
+                  }`}
+                  aria-label={barcodeMode ? "Back to photos" : "Scan a barcode instead"}
+                  aria-pressed={barcodeMode}
+                >
+                  <ScanBarcode className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setPickOpen(true)}
-              className="press flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-xs font-bold"
-            >
-              <ListChecks className="h-4 w-4" /> Pick from catalogue
-            </button>
+            {barcodeMode && (
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (manualCode.trim()) {
+                    handleBarcode(manualCode.trim());
+                    setManualCode("");
+                  }
+                }}
+              >
+                <input
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="Or type the barcode"
+                  className="h-12 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button type="submit" className="press h-12 rounded-xl bg-secondary px-6 text-sm font-bold">
+                  Add
+                </button>
+              </form>
+            )}
           </>
         )}
 
@@ -246,68 +343,81 @@ function ScanPage() {
           </Card>
         )}
 
-        {open && (
-          <Card className="p-0">
-            <button
-              type="button"
-              onClick={() => setBarcodeOpen((o) => !o)}
-              aria-expanded={barcodeOpen}
-              className="press flex w-full items-center gap-3 p-3 text-left"
-            >
-              <ScanBarcode className="h-5 w-5 text-muted-foreground" />
-              <span className="flex-1 text-sm font-bold">Scan a barcode instead</span>
-              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${barcodeOpen ? "rotate-180" : ""}`} />
-            </button>
-            {barcodeOpen && (
-              <div className="space-y-3 border-t border-border p-3">
-                <div className="relative overflow-hidden rounded-xl bg-navy">
-                  <video ref={videoRef} className="aspect-[4/3] w-full object-cover" muted playsInline autoPlay />
-                  {cam.ready ? (
-                    <div className="scanner-frame pointer-events-none absolute inset-x-10 inset-y-10">
-                      {!paused && <div className="animate-scan-sweep absolute inset-x-0 h-0.5 bg-primary" />}
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-navy-foreground">
-                      <ScanBarcode className="h-10 w-10 opacity-70" />
-                      <p className="text-sm font-bold">{cam.error ?? "Opening scanner…"}</p>
-                    </div>
+        {shots.length > 0 && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Photos to confirm ({shots.length})</p>
+              {recognised.length > 1 && (
+                <button
+                  type="button"
+                  onClick={countAll}
+                  className="press flex items-center gap-1 rounded-lg bg-success/15 px-2.5 py-1.5 text-[11px] font-bold text-success"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" /> Count all {recognised.length}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {shots.map((shot) => (
+                <Card key={shot.id} className="flex items-center gap-3 p-2">
+                  <img src={shot.src} alt="Product" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
+                    {shot.status === "identifying" ? (
+                      <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
+                        <Sparkles className="h-4 w-4 animate-pulse-soft" /> Identifying…
+                      </p>
+                    ) : shot.product ? (
+                      <>
+                        <p className="truncate text-sm font-bold">{shot.product.name}</p>
+                        <p className="text-[11px] text-muted-foreground">AI {Math.round(shot.confidence * 100)}% sure</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-destructive">Not recognised</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{shot.reason}</p>
+                      </>
+                    )}
+                  </div>
+                  {shot.status === "done" && shot.product && (
+                    <button
+                      type="button"
+                      onClick={() => countShot(shot, shot.product!, "vision")}
+                      className="press flex items-center gap-1 rounded-lg bg-success px-3 py-2 text-xs font-bold text-success-foreground"
+                    >
+                      <Check className="h-4 w-4" /> Count
+                    </button>
                   )}
-                  <span className="absolute left-3 top-3 rounded-full bg-navy/70 px-3 py-1 text-xs font-bold text-navy-foreground">
-                    {paused ? "Paused" : "Point at a barcode"}
-                  </span>
+                  {shot.status !== "identifying" && (
+                    <button
+                      type="button"
+                      onClick={() => setFixShot(shot)}
+                      className="press rounded-lg border border-border px-2.5 py-2 text-[11px] font-bold"
+                    >
+                      {shot.product ? "Change" : "Pick"}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setPaused((p) => !p)}
-                    className="press absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-navy/70 text-navy-foreground"
-                    aria-label={paused ? "Resume scanning" : "Pause scanning"}
+                    onClick={() => dropShot(shot.id)}
+                    className="press rounded-lg p-2 text-muted-foreground"
+                    aria-label="Discard photo"
                   >
-                    {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                    <X className="h-4 w-4" />
                   </button>
-                </div>
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (manualCode.trim()) {
-                      handleBarcode(manualCode.trim());
-                      setManualCode("");
-                    }
-                  }}
-                >
-                  <input
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="Or type the barcode"
-                    className="h-12 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button type="submit" className="press h-12 rounded-xl bg-secondary px-6 text-sm font-bold">
-                    Add
-                  </button>
-                </form>
-              </div>
-            )}
-          </Card>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {open && (
+          <button
+            type="button"
+            onClick={() => setPickOpen(true)}
+            className="press flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-xs font-bold"
+          >
+            <ListChecks className="h-4 w-4" /> Pick from catalogue
+          </button>
         )}
 
         <div>
@@ -399,36 +509,16 @@ function ScanPage() {
         />
       </Sheet>
 
-      {/* AI suggestion from a photo: a human confirms before anything is counted. */}
-      <Sheet open={suggestion !== null} onClose={() => setSuggestion(null)} title="Is this the product?">
-        {suggestion && (
+      {/* The user chooses the product for a photo the AI got wrong or could not recognise. */}
+      <Sheet open={fixShot !== null} onClose={() => setFixShot(null)} title="Which product is this?">
+        {fixShot && (
           <div className="space-y-3">
-            {suggestion.product ? (
-              <Card className="p-3">
-                <p className="text-lg font-bold">{suggestion.product.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  AI confidence {Math.round(suggestion.confidence * 100)}% · {suggestion.reason}
-                </p>
-              </Card>
-            ) : (
-              <p className="text-sm text-muted-foreground">The AI could not match this photo: {suggestion.reason}</p>
-            )}
-            {suggestion.product && (
-              <PrimaryButton
-                onClick={async () => {
-                  const p = suggestion.product!;
-                  setSuggestion(null);
-                  await countProduct(p, "vision");
-                }}
-              >
-                Yes, count 1
-              </PrimaryButton>
-            )}
-            <p className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Or choose it yourself</p>
+            <img src={fixShot.src} alt="Product" className="mx-auto max-h-48 rounded-xl object-contain" />
             <ProductPicker
               onPick={async (p) => {
-                setSuggestion(null);
-                await countProduct(p, "manual");
+                const shot = fixShot;
+                setFixShot(null);
+                await countShot(shot, p, "manual");
               }}
             />
           </div>
